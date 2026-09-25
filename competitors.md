@@ -1,4 +1,4 @@
-# Конкуренты YOUNG YANNY: топ-10
+# Конкуренты YOUNG YANNY: топ-20
 
 *Дата: 25.09.2026*
 
@@ -44,6 +44,50 @@
 
 ---
 
+## Ещё 10 конкурентов для насмотренности (добавлено 25.09.2026)
+
+### Твои референсы: @alexgvozdarev и @1highfly
+
+Эти профили не удалось изучить: Instagram из моей среды не открывается, а поиск по ним ничего не нашёл (Instagram почти не индексируется). Пришли скриншоты их профилей и 3–5 самых залетевших Reels, и я разберу их по чек-листу ниже.
+
+### 🇷🇺 Русскоязычные: монтажёры с личным брендом
+
+| # | Кто | Где | Размер (по поиску) | Чему учиться |
+|---|-----|-----|--------------------|--------------|
+| 11 | **Женя Тен** | YouTube (@EugeneTen), Boosty | — | Колорист и сертифицированный тренер DaVinci Resolve: короткие туториалы, стримы, разборы проектов. **Эталон глубокой экспертности + заработок через Boosty** |
+| 12 | **Илья Зернов** | YouTube (@Zernov) | — | Режиссёр монтажа, выпускник ВГИКа, Adobe Certified Instructor, преподаёт в Skillbox. **Теория монтажа («почему», а не «какая кнопка»)** — бери это в свои ролики |
+| 13 | **Алия Ливайшина, «Монтажерка»** | Instagram (@livaishina), YouTube, подкаст | — | Монтаж для блогеров, деньги, клиенты, правки. **Бизнес-сторона профессии** |
+| 14 | **Женя Соломкина** | Instagram (@prodbyzhenya) | ~25K | «Монтаж и жизнь» — **ровно твой формат влог + эксперт** |
+| 15 | **Женя, «неИдеальная жизнь монтажёра»** | YouTube | Небольшой | Влог монтажёра + продажа услуг монтажа коротких видео |
+| 16 | **Влада Зарецкая** | Instagram (@vlada_zaretskaya) | ~29K | Монтаж Reels и обучение: как упаковывать экспертность в Reels |
+
+### 🌍 Зарубежные: уровень, к которому тянуться
+
+| # | Кто | Где | Размер (по поиску) | Чему учиться |
+|---|-----|-----|--------------------|--------------|
+| 17 | **Hayden Hillier-Smith** | Instagram (@hhilliersmith), подкаст | ~79K в IG | Монтажёр MrBeast, Logan Paul, Mark Rober. Курс «Edit Like An Artist». **Как монтажёр становится брендом** |
+| 18 | **Daniel Schiffer** | YouTube, Instagram (@daniel.schiffer) | 2M+ на YouTube, ~518K в IG | Закулисье съёмки, переходы в камере, минимум техники. **Формат «как я это снял»** |
+| 19 | **Zach King** | Все платформы | Один из крупнейших VFX-креаторов | VFX-«магия» в коротком формате. **Как VFX становится развлечением, а не только уроком** |
+| 20 | **Paddy Galloway** | YouTube, X | Стратег MrBeast и Sidemen | Изучил 3.3 млрд просмотров Shorts. **Упаковка, хуки, удержание** — учись у него стратегии, а не монтажу |
+
+### Как разбирать конкурента (чек-лист на 15 минут)
+
+Открой профиль и отсортируй ролики по просмотрам. Для **5 самых залетевших** заполни таблицу:
+
+| Что смотреть | Вопрос |
+|---|---|
+| Хук | Что в первой секунде: картинка, текст, фраза? |
+| Длина | Сколько секунд? |
+| Лицо | Автор в кадре или только экран? |
+| Польза | Какой один «секрет» дают? |
+| Призыв | Как зовут подписаться: продолжение, пак, коммент? |
+| Продажа | Что продают: курс, пак, Boosty, услуги? |
+| Частота | Сколько роликов в неделю? |
+
+Когда повторяется одно и то же у 2–3 конкурентов — это **рабочий паттерн**, бери его. Ищи и то, чего **ни у кого нет**: там твоя ниша.
+
+---
+
 ## Где твоё преимущество
 
 1. **Крупные русские конкуренты — это школы** (Фабрика Творцов, VideoSmile). Они продают курсы и делают видео медленно и «академично». У них нет человека из рэп-тусовки в кадре. **Ты можешь им быть:** персонаж YOUNG YANNY, свой стиль, свой вайб.
@@ -86,3 +130,20 @@
 - [Top 20 YouTube Channels for After Effects Tutorials — PremiumBeat](https://www.premiumbeat.com/royalty-free/best-youtube-channels-for-video-editing-tutorials/after-effects)
 - [Cinecom.net — YouTube](https://www.youtube.com/channel/UCpLfM1_MIcIQ3jweRT19LVw)
 - [Jake In Motion — YouTube](https://www.youtube.com/c/jakeinmotion)
+- [Женя Тен — YouTube](https://www.youtube.com/@EugeneTen)
+- [Женя Тен — Boosty](https://boosty.to/eugene_ten)
+- [Илья Зернов — YouTube](https://www.youtube.com/c/Zernov/videos)
+- [Илья Зернов — Academy Market](https://academy-market.com/teacher/ila-zernov)
+- [Алия • Монтажерка — Instagram](https://www.instagram.com/livaishina/)
+- [Монтажерка — Apple Podcasts](https://podcasts.apple.com/podcast/id1571469081)
+- [Женя Соломкина — Instagram](https://www.instagram.com/prodbyzhenya/)
+- [Женя | неИдеальная жизнь монтажера — YouTube](https://www.youtube.com/channel/UCPZofeUhldzD_ZQSVOUh5EA)
+- [Влада Зарецкая — Instagram](https://www.instagram.com/vlada_zaretskaya/)
+- [Битва монтажёров #1 — YouTube](https://www.youtube.com/watch?v=zyRlIszekyA)
+- [Hayden Hillier-Smith — Instagram](https://www.instagram.com/hhilliersmith/)
+- [Hayden Hillier-Smith — Musicbed](https://www.musicbed.com/articles/filmmaking/masterminding-viral-edits-with-hayden-hillier-smith/)
+- [Daniel Schiffer — YouTube](https://www.youtube.com/@danielschiffer)
+- [Daniel Schiffer — Instagram](https://www.instagram.com/daniel.schiffer/?hl=en)
+- [Top VFX Editor Creators 2026 — MyCreativeFX](https://mycreativefx.com/blog/427-top-best-vfx-editor-creators-2026-real-workflows-from-youtube-instagram-icons-mycreativefx)
+- [Paddy Galloway — Creator Science](https://podcast.creatorscience.com/paddy-galloway-2/)
+- [Paddy Galloway — OutlierKit](https://outlierkit.com/resources/paddy-galloway-growth-strategy/)
