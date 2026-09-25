@@ -66,6 +66,12 @@
     var FONT_REPORT = [];
 
     function fr(f) { return f / FPS; }
+
+    // Поворот по Z. У 3D-слоя нет transform.rotation, поэтому берём по matchName:
+    // он одинаковый у 2D и 3D слоёв и в любой локализации AE.
+    function rotZ(layer) {
+        return layer.property("ADBE Transform Group").property("ADBE Rotate Z");
+    }
     function warn(msg) { LOG.push(msg); }
 
     // ---------------- утилиты ----------------
@@ -392,7 +398,7 @@
         }
         keyF(layer.transform.position, P);
         if (Sc.length) keyF(layer.transform.scale, Sc);
-        if (R.length) keyF(layer.transform.rotation, R);
+        if (R.length) keyF(rotZ(layer), R);
     }
 
     // ---------------- выражения ----------------
@@ -652,15 +658,15 @@
             if (b[0] === "E") {
                 L.transform.position.setValue(fin);
                 L.transform.scale.setValue([b[3], b[3], 100]);
-                L.transform.rotation.setValue(b[2]);
+                rotZ(L).setValue(b[2]);
             } else {
                 keyF(L.transform.position, [[t0, origin], [60, fin]]);
                 keyF(L.transform.scale, [[t0, [12, 12, 100]], [60, [b[3], b[3], 100]]]);
-                keyF(L.transform.rotation, [[t0, b[2] - 140 * sign], [60, b[2]]]);
+                keyF(rotZ(L), [[t0, b[2] - 140 * sign], [60, b[2]]]);
                 keyF(L.transform.property("ADBE Rotate Y"), [[t0, b[4] + 180 * sign], [60, b[4]]]);
                 easeAll(L.transform.position, 90, 10);
                 easeAll(L.transform.scale, 90, 10);
-                easeAll(L.transform.rotation, 90, 10);
+                easeAll(rotZ(L), 90, 10);
                 easeAll(L.transform.property("ADBE Rotate Y"), 90, 10);
             }
             if (b[4] !== 0 && b[0] === "E") L.transform.property("ADBE Rotate Y").setValue(b[4]);
@@ -681,7 +687,7 @@
         easeKey(sc, 2, 90, 70);
         easeKey(sc, 3, 30, 30);
         easeKey(sc, 4, 15, 15);
-        var rot = swarm.transform.rotation;
+        var rot = rotZ(swarm);
         keyF(rot, [[53, -6], [60, 0], [84, 65], [103, 115]]);
         easeKey(rot, 1, 10, 10);
         easeKey(rot, 2, 60, 75);
@@ -707,7 +713,7 @@
                 });
                 t.parent = parent;
                 t.transform.position.setValue(pos);
-                t.transform.rotation.setValue(ang);
+                rotZ(t).setValue(ang);
                 setExpr(t.transform.opacity, scriptFlashExpr(variants[v][2], fadeIn, fadeOut), prefix + " flash");
             }
         }
@@ -726,7 +732,7 @@
         outer.transform.anchorPoint.setValue([0, 0]);
         outer.transform.position.setValue([540, 540]);
         ringCopies(c, outer, 8, 510, 190, 70, "OUTER", [82, 84], [139, 146]);
-        keyF(outer.transform.rotation, [[82, 40], [148, -60]]);
+        keyF(rotZ(outer), [[82, 40], [148, -60]]);
         keyF(outer.transform.scale, [[82, [70, 63]], [96, [100, 90]], [138, [100, 90]], [146, [160, 144]]]);
         easeAll(outer.transform.scale, 50, 50);
 
@@ -742,7 +748,7 @@
         inner.parent = cam;
         inner.transform.position.setValue([0, 0]);
         ringCopies(c, inner, 6, 175, 110, 36, "INNER", null, null);
-        keyF(inner.transform.rotation, [[82, 0], [149, 150]]);
+        keyF(rotZ(inner), [[82, 0], [149, 150]]);
 
         var caps = makeText(c, CFG.scribble, {
             name: "MAIN caps", size: 150, color: [1, 1, 1], fonts: CFG.fonts.caps, width: 600, anchor: "center"
@@ -757,11 +763,11 @@
         setExpr(caps.transform.opacity, scriptFlashExpr(false, null, null), "main caps flash");
         setExpr(script.transform.opacity, scriptFlashExpr(true, null, null), "main script flash");
 
-        keyF(cam.transform.rotation, [
+        keyF(rotZ(cam), [
             [82, -250], [88, -80], [93, 55], [100, 38], [112, 27], [124, 18],
             [130, 2], [138, -3], [142, -8], [145, -20], [148, -35]
         ]);
-        easeKey(cam.transform.rotation, 3, 70, 40);
+        easeKey(rotZ(cam), 3, 70, 40);
         var zs = [[82, 6], [86, 14], [90, 40], [93, 55], [97, 58], [100, 82], [103, 76],
                   [112, 80], [124, 90], [130, 97], [138, 118], [142, 150], [145, 225],
                   [147, 380], [149, 700]];
