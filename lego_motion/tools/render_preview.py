@@ -91,7 +91,10 @@ class Scene:
         rot = float(kv(A.get("rot"), t, 0))
         if r["parent"]:
             pos = np.array(r["pivot"], float) + kv(A.get("pos"), t, [0, 0])
-            scale = [1.0, 1.0]
+            scale = kv(A.get("scale"), t, [100, 100]) / 100
+            if r.get("follow"):  # position expression: parent.fromComp(arm.toComp(wrist))
+                wrist = self.world(r["follow"], t) @ np.array([*r["pivot"], 1.0])
+                pos = (np.linalg.inv(self.world(r["parent"], t)) @ wrist)[:2]
         else:
             pos, scale = CFG["feet"], [CFG["charScale"] / 100] * 2
         if name == "TORSO":  # breathing expression
