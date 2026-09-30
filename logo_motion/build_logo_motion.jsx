@@ -10,14 +10,14 @@
  * Слои (сверху вниз):
  *   CONTROLS         null: цвета логотипа (Black, Pink, Background, Grid)
  *   LOGO             null: родитель всех частей логотипа, медленный наезд 97 -> 100 %
- *   SMALL_DISC       малый розовый полукруг — открывается поворотом снизу вверх
- *   D_CUTOUT         большой белый полукруг ("D") — открывается поворотом сверху вниз
+ *   DISC             прекомп DISC_SPIN: белое "D" + малый розовый полукруг крутятся как пластинка
+ *                    (null DISC_ROTATION: раскрутка на входе, разгон и сжатие на выходе); маска = панель
  *   PINK_PANEL       розовая панель — выезжает слева направо
  *   GLYPH_4_О ... GLYPH_1_Ь   буквы; каждая "рисуется" квадратной кистью по штрихам (группы Bar N)
  *   GRID             тонкая строительная сетка модулей, растворяется к 2.4 s
  *   BG               фон
  *
- * Все движения — обычные ключи с easing (Size/Position прямоугольников, Trim Paths у полукругов),
+ * Все движения — обычные ключи с easing (Size/Position прямоугольников, Rotation/Scale диска),
  * их можно двигать в таймлайне. Тайминги — блок T, геометрия — GEO и GLYPHS, цвета — COLORS.
  * Кадр 0 и последний кадр — чистый фон, поэтому ролик зацикливается без шва.
  */
@@ -81,13 +81,14 @@
         handoff: 0.70,
         panelIn: 1.20,
         panelDur: 0.42,
-        sweepIn: 1.45,
-        sweepDur: 0.65,
-        smallIn: 1.90,
-        smallDur: 0.45,
+        discIn: 1.35,
+        discInDur: 1.00,
+        discTurns: 1.5,
+        smallIn: 1.75,
+        smallDur: 0.40,
         outro: 4.10,
-        smallOut: 4.30,
-        sweepOut: 4.45,
+        discOut: 4.20,
+        discOutDur: 0.95,
         panelOut: 4.95,
         pushStart: 0.30,
         pushEnd: 5.40
@@ -199,14 +200,19 @@
         s.closed = closed;
         return s;
     }
-    // окружность из 4 вершин: старт наверху, по часовой — Trim Paths 0..50 % = правая половина
-    function circleFromTop(cx, cy, r) {
+    // правый полукруг радиуса r с центром в (0, 0): прямой край слева, дуга справа
+    function halfDisc(r) {
         var k = 0.5523 * r;
         return makeShape(
-            [[cx, cy - r], [cx + r, cy], [cx, cy + r], [cx - r, cy]],
-            [[-k, 0], [0, -k], [k, 0], [0, k]],
-            [[k, 0], [0, k], [-k, 0], [0, -k]],
+            [[0, -r], [r, 0], [0, r]],
+            [[0, 0], [0, -k], [k, 0]],
+            [[k, 0], [0, k], [0, 0]],
             true);
+    }
+    function rectShape(x0, y0, x1, y1) { return makeShape([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], null, null, true); }
+    function addMask(layer, shape) {
+        var m = layer.property("ADBE Mask Parade").addProperty("ADBE Mask Atom");
+        m.property("ADBE Mask Shape").setValue(shape);
     }
     function addPath(l, gi, shape) {
         var p = vecs(l, gi).addProperty("ADBE Vector Shape - Group");
@@ -264,7 +270,7 @@
             e.property(1).setValue(rgba(COLORS[order[i]]));
         }
         var m = c.property("ADBE Marker");
-        var built = T.smallIn + T.smallDur;
+        var built = T.discIn + T.discInDur;
         var marks = [[T.build, "BUILD"], [built, "LOGO COMPLETE - hold"]];
         if (CFG.outro) marks.push([T.outro, "OUTRO"]);
         for (i = 0; i < marks.length; i++) safe("marker", function () { m.setValueAtTime(marks[i][0], new MarkerValue(marks[i][1])); });
@@ -335,31 +341,58 @@
         return l;
     }
 
-    // полукруг = толстая обводка окружности радиуса R/2 шириной R, обрезанная Trim Paths до 50 %.
-    // bleed > 0 расширяет обводку за центр и край (без щелей), годится только для белого "D"
-    function buildHalfDisc(comp, name, colorKey, R, bleed, label) {
-        var l = shapeLayer(comp, name, label);
-        var g = addGroup(l, "Half Disc");
-        addPath(l, g, circleFromTop(OX + GEO.panelX, OY + GEO.logoH / 2, R / 2));
-        addTrim(l, g);
-        addStroke(l, g, colorKey, R + 2 * bleed);
-        return { layer: l, group: g };
-    }
+    // Диск справа ("пластинка"): белое "D" + малый розовый полукруг в прекомпе DISC_SPIN.
+    // Оба вращаются вместе на null DISC_ROTATION: вход — раскрутка из точки с торможением,
+    // выход — разгон в ту же сторону (по часовой) со сжатием. Маска слоя DISC = розовая панель,
+    // поэтому левая половина вращающегося диска не заходит на буквы.
+    function buildDisc(main) {
+        var pc = app.project.items.addComp(uniqueItemName("DISC_SPIN"), W, H, 1, CFG.duration, CFG.fps);
+        pc.motionBlur = true;
+        pc.shutterAngle = 180;
+        pc.shutterPhase = -90;
+        var savedCtrl = CTRL;
+        CTRL = 'comp("' + main.name + '").layer("CONTROLS")';
 
-    function buildDiscs(comp) {
-        // большой белый "D": открывается по часовой сверху вниз, уходит дальше по часовой
-        var d = buildHalfDisc(comp, "D_CUTOUT", "background", GEO.discR, 1, 9);
-        keys(trimProp(d.layer, d.group, "ADBE Vector Trim End"), [[T.sweepIn, 0, EASE.start], [T.sweepIn + T.sweepDur, 50, EASE.end]]);
+        var cx = W / 2 + OX + GEO.panelX, cy = H / 2 + OY + GEO.logoH / 2;
+        var rot = pc.layers.addNull(CFG.duration);
+        rot.name = "DISC_ROTATION";
+        rot.label = 2;
+        tr(rot, "pos").setValue([cx, cy]);
+        var turns = 360 * T.discTurns, inEnd = T.discIn + T.discInDur, outEnd = T.discOut + T.discOutDur;
+        var rk = [[T.discIn, -turns, [33, 8]], [inEnd, 0, [90, 33]]];
+        var sk = [[T.discIn, [0, 0], [33, 10]], [T.discIn + 0.6, [100, 100], [85, 33]]];
         if (CFG.outro) {
-            keys(trimProp(d.layer, d.group, "ADBE Vector Trim Start"), [[T.sweepOut, 0, EASE.start], [T.sweepOut + T.sweepDur, 50, EASE.end]]);
+            rk.push([T.discOut, 0, [33, 75]]);
+            rk.push([outEnd, turns, [8, 33]]);
+            sk.push([outEnd - 0.55, [100, 100], [33, 80]]);
+            sk.push([outEnd, [0, 0], [10, 33]]);
         }
-        // малый розовый: открывается против часовой снизу вверх, уходит дальше против часовой
-        var s = buildHalfDisc(comp, "SMALL_DISC", "pink", GEO.smallR, 0, 4);
-        keys(trimProp(s.layer, s.group, "ADBE Vector Trim Start"), [[T.smallIn, 50, EASE.start], [T.smallIn + T.smallDur, 0, EASE.end]]);
-        var endProp = trimProp(s.layer, s.group, "ADBE Vector Trim End");
-        if (CFG.outro) keys(endProp, [[T.smallOut, 50, EASE.start], [T.smallOut + T.smallDur, 0, EASE.end]]);
-        else endProp.setValue(50);
-        return [d.layer, s.layer];
+        keys(tr(rot, "rot"), rk);
+        keys(tr(rot, "scale"), sk);
+
+        var d = shapeLayer(pc, "D_CUTOUT", 9);
+        addPath(d, addGroup(d, "Half Disc"), halfDisc(GEO.discR + 1));   // +1 px: без розовой каймы
+        addRootFill(d, "background");
+        parentTo(d, rot);
+
+        var s = shapeLayer(pc, "SMALL_DISC", 4);
+        addPath(s, addGroup(s, "Half Disc"), halfDisc(GEO.smallR));
+        addRootFill(s, "pink");
+        parentTo(s, rot);
+        var ss = [[T.smallIn, [0, 0], [33, 10]], [T.smallIn + T.smallDur, [100, 100], [85, 33]]];
+        if (CFG.outro) {
+            ss.push([T.discOut, [100, 100], [33, 70]]);
+            ss.push([T.discOut + 0.4, [0, 0], [10, 33]]);
+        }
+        keys(tr(s, "scale"), ss);
+        CTRL = savedCtrl;
+
+        var layer = main.layers.add(pc);
+        layer.name = "DISC";
+        layer.label = 9;
+        layer.motionBlur = true;
+        addMask(layer, rectShape(cx, cy - GEO.logoH / 2 - 10, cx + GEO.panelW + 10, cy + GEO.logoH / 2 + 10));
+        return layer;
     }
 
     // =====================================================================
@@ -381,9 +414,7 @@
             if (CFG.grid) parts.push(buildGrid(comp));
             for (var i = 0; i < GLYPHS.length; i++) parts.push(buildGlyph(comp, i));
             parts.push(buildPanel(comp));
-            var discs = buildDiscs(comp);
-            parts.push(discs[0]);
-            parts.push(discs[1]);
+            parts.push(buildDisc(comp));
 
             var logo = comp.layers.addNull(CFG.duration);
             logo.name = "LOGO";
@@ -394,7 +425,7 @@
             ctrl.moveToBeginning();
 
             comp.openInViewer();
-            comp.time = T.smallIn + T.smallDur + 0.5;
+            comp.time = T.discIn + T.discInDur + 0.5;
             var msg = "Logo motion built: " + comp.name + " (" + W + "x" + H + ", " + CFG.fps + " fps, " + CFG.duration + " s)\n" +
                       "Colors: CONTROLS layer. Timing: keyframes on the GLYPH / PANEL / DISC layers.";
             if (WARN.length) msg += "\n\nWarnings:\n- " + WARN.join("\n- ");

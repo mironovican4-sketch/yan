@@ -101,10 +101,16 @@ for gi, G in enumerate(GLYPHS):
         t += dur * T["handoff"]
 PX0 = OX + GEO["panelX"]
 PANEL = bar_keys(PX0, OY, PX0 + GEO["panelW"], OY + GEO["logoH"], "right", T["panelIn"], T["panelDur"], T["panelOut"], T["panelDur"])
-D_END = [[T["sweepIn"], 0, EASE["start"]], [T["sweepIn"] + T["sweepDur"], 50, EASE["end"]]]
-D_START = [[T["sweepOut"], 0, EASE["start"]], [T["sweepOut"] + T["sweepDur"], 50, EASE["end"]]] if CFG["outro"] else [[0, 0]]
-S_START = [[T["smallIn"], 50, EASE["start"]], [T["smallIn"] + T["smallDur"], 0, EASE["end"]]]
-S_END = [[T["smallOut"], 50, EASE["start"]], [T["smallOut"] + T["smallDur"], 0, EASE["end"]]] if CFG["outro"] else [[0, 50]]
+# disc spin (null DISC_ROTATION in the jsx) + small disc scale
+_turns = 360 * T["discTurns"]
+_in_end, _out_end = T["discIn"] + T["discInDur"], T["discOut"] + T["discOutDur"]
+DISC_ROT = [[T["discIn"], -_turns, [33, 8]], [_in_end, 0, [90, 33]]]
+DISC_SCALE = [[T["discIn"], 0, [33, 10]], [T["discIn"] + 0.6, 100, [85, 33]]]
+SMALL_SCALE = [[T["smallIn"], 0, [33, 10]], [T["smallIn"] + T["smallDur"], 100, [85, 33]]]
+if CFG["outro"]:
+    DISC_ROT += [[T["discOut"], 0, [33, 75]], [_out_end, _turns, [8, 33]]]
+    DISC_SCALE += [[_out_end - 0.55, 100, [33, 80]], [_out_end, 0, [10, 33]]]
+    SMALL_SCALE += [[T["discOut"], 100, [33, 70]], [T["discOut"] + 0.4, 0, [10, 33]]]
 GRID_X = [0, M, 2 * M, GEO["glyph"], GEO["glyph"] + GEO["gap"], GEO["glyph"] + GEO["gap"] + M, GEO["glyph"] + GEO["gap"] + 2 * M,
           2 * GEO["glyph"] + GEO["gap"], GEO["panelX"], GEO["logoW"]]
 GRID_Y = [0, M, 2 * M, GEO["glyph"], GEO["logoH"] / 2, GEO["glyph"] + GEO["gap"], GEO["glyph"] + GEO["gap"] + M,
@@ -136,15 +142,26 @@ class Frame:
         bx, by = self.to_px(x1, y1)
         return np.outer(cov1d(ay, by, H), cov1d(ax, bx, W))
 
-    def sector(self, r, start_pct, end_pct):
+    def half_disc(self, r, rot_deg, scale):
+        """right half-disc rotated around the panel's left-edge centre, clipped to the panel (mask)"""
         m = np.zeros((H, W), np.float32)
-        a0, a1 = sorted((start_pct, end_pct))
-        if a1 - a0 < 1e-3:
+        if r * scale < 0.05:
             return m
-        cx, cy = self.to_px(PX0, OY + GEO["logoH"] / 2)
-        th = np.radians(-90 + 360 * np.linspace(a0, a1, 128) / 100)
-        pts = [(cx, cy)] + [(cx + math.cos(a) * r * self.s, cy + math.sin(a) * r * self.s) for a in th]
-        cv2.fillPoly(m, [np.round(np.array(pts) * 16).astype(np.int32)], 1.0, lineType=cv2.LINE_AA, shift=4)
+        cx, cy = PX0, OY + GEO["logoH"] / 2
+        phi = np.radians(np.linspace(-90, 90, 181) + rot_deg)
+        poly = [(cx + math.cos(a) * r * scale, cy + math.sin(a) * r * scale) for a in phi]
+        clipped = []  # Sutherland-Hodgman against x >= cx
+        for (x0, y0), (x1, y1) in zip(poly, poly[1:] + poly[:1]):
+            in0, in1 = x0 >= cx, x1 >= cx
+            if in0:
+                clipped.append((x0, y0))
+            if in0 != in1:
+                k = (cx - x0) / (x1 - x0)
+                clipped.append((cx, y0 + (y1 - y0) * k))
+        if len(clipped) < 3:
+            return m
+        pts = np.array([self.to_px(x, y) for x, y in clipped])
+        cv2.fillPoly(m, [np.round(pts * 16).astype(np.int32)], 1.0, lineType=cv2.LINE_AA, shift=4)
         return m
 
 
@@ -183,8 +200,9 @@ def render(t):
     (w, h), (cx, cy) = kv(PANEL[0], t), kv(PANEL[1], t)
     if w > 1e-3:
         over(f.rect_cov(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2), COLORS["pink"])
-    over(f.sector(GEO["discR"] + 1, float(kv(D_START, t)), float(kv(D_END, t))), COLORS["background"])
-    over(f.sector(GEO["smallR"], float(kv(S_START, t)), float(kv(S_END, t))), COLORS["pink"])
+    rot, sc = float(kv(DISC_ROT, t)), float(kv(DISC_SCALE, t)) / 100
+    over(f.half_disc(GEO["discR"] + 1, rot, sc), COLORS["background"])
+    over(f.half_disc(GEO["smallR"], rot, sc * float(kv(SMALL_SCALE, t)) / 100), COLORS["pink"])
     return img
 
 
