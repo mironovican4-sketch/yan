@@ -200,12 +200,18 @@
 
         var layers = {}, i, name;
         for (i = 0; i < ORDER.length; i++) layers[ORDER[i]] = buildPart(comp, ORDER[i]);
+        // Сначала вся иерархия, пока у слоёв нет масштаба: при назначении родителя AE сохраняет вид слоя
+        // и подкручивает его Scale/Rotation. Потом — суставы и масштаб; у детей Scale 100 %, Rotation 0.
+        for (i = 0; i < ORDER.length; i++) {
+            if (PARENT[ORDER[i]]) layers[ORDER[i]].parent = layers[PARENT[ORDER[i]]];
+        }
         for (i = 0; i < ORDER.length; i++) {
             name = ORDER[i];
-            var L = layers[name], pv = VEC.pivots[name];
+            var L = layers[name];
+            tr(L, "rot").setValue(0);
             if (PARENT[name]) {
-                L.parent = layers[PARENT[name]];
-                tr(L, "pos").setValue(pv);
+                tr(L, "pos").setValue(VEC.pivots[name]);
+                tr(L, "scale").setValue([100, 100]);
             } else {
                 tr(L, "pos").setValue(CFG.feet);
                 tr(L, "scale").setValue([ch.scale, ch.scale]);

@@ -234,10 +234,26 @@ class CompItem extends Item {
 class Layer {
   constructor(comp, name, kind) {
     this.containingComp = comp; this.name = name; this.kind = kind; this.source = kind === "null" || kind === "solid" ? { isSolid: true } : null;
-    this._inPoint = 0; this._outPoint = comp.duration; this.parent = null; this.enabled = true; this.motionBlur = false; this.label = 0; this.adjustmentLayer = false; this.blendingMode = 1; this.trackMatteType = 0; this._timeRemap = false;
+    this._inPoint = 0; this._outPoint = comp.duration; this._parent = null; this.enabled = true; this.motionBlur = false; this.label = 0; this.adjustmentLayer = false; this.blendingMode = 1; this.trackMatteType = 0; this._timeRemap = false;
     this.root = makeNode("layer", layerSchema(kind), null, this);
   }
   property(k) { return wrap(this.root).property(k); }
+  // like AE: assigning a parent keeps the layer where it is on screen, so the child's own
+  // Scale / Rotation are compensated by the parent's world transform at that moment
+  get parent() { return this._parent; }
+  set parent(p) {
+    if (p) {
+      const ws = worldScale(p), wr = worldRot(p);
+      if (Math.abs(ws[0] - 1) > 1e-6 || Math.abs(ws[1] - 1) > 1e-6 || Math.abs(wr) > 1e-6) {
+        const sc = this.property("ADBE Transform Group").property("ADBE Scale"), ro = this.property("ADBE Transform Group").property("ADBE Rotate Z");
+        const v = sc.value;
+        sc.setValue([v[0] / ws[0], v[1] / ws[1], v[2]]);
+        ro.setValue(ro.value - wr);
+        stats.parentCompensations = (stats.parentCompensations || 0) + 1;
+      }
+    }
+    this._parent = p;
+  }
   get inPoint() { return this._inPoint; } set inPoint(v) { if (v < 0 || v >= this._outPoint) fail("inPoint " + v + " invalid on " + this.name); this._inPoint = v; }
   get outPoint() { return this._outPoint; } set outPoint(v) { if (v <= this._inPoint) fail("outPoint " + v + " <= inPoint on " + this.name); this._outPoint = v; }
   get timeRemapEnabled() { return this._timeRemap; } set timeRemapEnabled(v) { if (this.kind !== "av") fail("time remap on non-footage layer"); this._timeRemap = v; }
@@ -252,6 +268,9 @@ class Layer {
     return { left: td.justification === 7414 ? -w / 2 : 0, top: -h, width: w, height: h };
   }
 }
+function ownScale(l) { const v = l.property("ADBE Transform Group").property("ADBE Scale").value; return [v[0] / 100, v[1] / 100]; }
+function worldScale(l) { let s = [1, 1]; for (let x = l; x; x = x.parent) { const o = ownScale(x); s = [s[0] * o[0], s[1] * o[1]]; } return s; }
+function worldRot(l) { let r = 0; for (let x = l; x; x = x.parent) r += x.property("ADBE Transform Group").property("ADBE Rotate Z").value; return r; }
 function cloneTree(n, parent, layer) {
   const c = Object.create(Node.prototype);
   Object.assign(c, n, { parentNode: parent, layer, gen: 0 });
@@ -308,7 +327,8 @@ for (const it of project.items) {
   if (!(it instanceof CompItem)) continue;
   console.log(`\n[${it.name}] ${it.width}x${it.height} ${it.duration}s — ${it._layers.length} layers`);
   for (const l of it._layers) {
-    const extra = [l.parent ? "parent=" + l.parent.name : "", l.matte ? "matte=" + l.matte.name : "", l.enabled ? "" : "hidden", l._timeRemap ? "timeRemap" : ""].filter(Boolean).join(" ");
+    const ws = worldScale(l);
+    const extra = [l.parent ? "parent=" + l.parent.name : "", "world scale " + (ws[0] * 100).toFixed(1) + "%", l.matte ? "matte=" + l.matte.name : "", l.enabled ? "" : "hidden", l._timeRemap ? "timeRemap" : ""].filter(Boolean).join(" ");
     if (it._layers.length < 40 || !/^STRIPE_/.test(l.name)) console.log(`  ${l.name.padEnd(26)} ${l.inPoint.toFixed(2)}-${l.outPoint.toFixed(2)} ${extra}`);
   }
 }

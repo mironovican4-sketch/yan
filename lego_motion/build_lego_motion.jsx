@@ -297,12 +297,18 @@
             var layers = {}, i, r;
             for (i = 0; i < RIG.length; i++) layers[RIG[i].name] = buildPart(comp, RIG[i]);
             // иерархия: Position ребёнка = точка сустава (все контуры в координатах исходника)
+            // сначала вся иерархия, пока у слоёв нет масштаба (AE при назначении родителя подкручивает Scale ребёнка),
+            // потом суставы и масштаб; у детей Scale 100 %, Rotation 0
+            for (i = 0; i < RIG.length; i++) {
+                if (RIG[i].parent) layers[RIG[i].name].parent = layers[RIG[i].parent];
+            }
             for (i = 0; i < RIG.length; i++) {
                 r = RIG[i];
                 var L = layers[r.name];
+                tr(L, "rot").setValue(0);
                 if (r.parent) {
-                    L.parent = layers[r.parent];
                     tr(L, "pos").setValue(r.pivot);
+                    tr(L, "scale").setValue([100, 100]);
                 } else {
                     tr(L, "pos").setValue(CFG.feet);
                     tr(L, "scale").setValue([CFG.charScale, CFG.charScale]);
