@@ -302,6 +302,86 @@ def build_bear(tilt=64, arm_l=22, arm_r=-146, feet=(285, 935)):
 # возвращает на стойку
 # =============================================================================================
 
+class TubeArm:
+    """a LEGO arm rebuilt as a sleeve along a spine with the original width profile. Raised towards the camera,
+    only the spine shortens (squash about the shoulder) -> the arm stays round and clean, the outline uniform"""
+
+    def __init__(self, vec, name, n=14):
+        from scenekit import flatten
+        part, piv = vec["parts"][name], vec["pivots"]
+        self.S = np.array(piv[name], float)
+        self.Wr = np.array(piv["HAND" + name[3:]], float)
+        P = np.concatenate([flatten(p) for p in part["base"]["paths"]])
+        x0, y0 = np.floor(P.min(0)).astype(int) - 2
+        m = np.zeros((int(P[:, 1].max()) - y0 + 4, int(P[:, 0].max()) - x0 + 4), np.uint8)
+        import cv2
+        cv2.fillPoly(m, [np.round(P - [x0, y0]).astype(np.int32)], 1)
+        ys = np.linspace(self.S[1], self.Wr[1] - 14, 24)
+        cx, wd = [], []
+        for y in ys:
+            row = np.nonzero(m[int(round(y)) - y0])[0]
+            cx.append((row.min() + row.max()) / 2 + x0)
+            wd.append(row.max() - row.min())
+        u = (ys - ys[0]) / (ys[-1] - ys[0])
+        self.cx = np.poly1d(np.polyfit(u, cx, 2))
+        self.wd = np.poly1d(np.polyfit(u, wd, 2))
+        self.n = n
+        base = part["base"]["color"]
+        same_hue = [pr["color"] for pr in part["prints"] if max(pr["color"]) > 90 and np.argmax(pr["color"]) == np.argmax(base)
+                    and sum(pr["color"]) < sum(base)]
+        shade = max(same_hue, key=sum) if same_hue else [int(c * 0.78) for c in base]
+        self.colors = {"base": base, "shade": shade}
+        self.inner = -1 if self.S[0] > piv["TORSO"][0] else 1   # side towards the body
+        self.rest_end = self.tangent(1.0)
+
+    def spine(self, s):
+        u = np.linspace(0, 1, self.n)
+        x = self.cx(u) + (self.Wr[0] - self.cx(1)) * u ** 2        # end exactly at the wrist
+        y = self.S[1] + (self.Wr[1] - self.S[1]) * u
+        return np.stack([x, self.S[1] + (y - self.S[1]) * s], 1), self.wd(u)
+
+    def tangent(self, s):
+        Q, _ = self.spine(s)
+        d = Q[-1] - Q[-3]
+        return math.degrees(math.atan2(d[1], d[0]))
+
+    def paths(self, s):
+        s = s if abs(s) > 0.06 else math.copysign(0.06, s or 1)
+        Q, w = self.spine(s)
+        T = np.gradient(Q, axis=0)
+        T /= np.linalg.norm(T, axis=1, keepdims=True) + 1e-9
+        N = np.stack([-T[:, 1], T[:, 0]], 1)
+        L = Q + N * (w / 2)[:, None]
+        R = Q - N * (w / 2)[:, None]
+        r0 = w[0] / 2   # round shoulder ball behind the spine start
+        a0 = math.atan2(N[0, 1], N[0, 0])
+        cap = [Q[0] + r0 * np.array([math.cos(a0 + math.pi * k / 6), math.sin(a0 + math.pi * k / 6)]) for k in range(1, 6)]
+        outline = smooth_path(list(L[::-1]) + cap + list(R), closed=True)
+        side = -self.inner * (1 if s > 0 else -1)
+        k0 = int(self.n * 0.32)
+        a = Q[k0:-1] + N[k0:-1] * (side * w[k0:-1] / 2)[:, None]
+        b = Q[k0:-1] + N[k0:-1] * (side * w[k0:-1] * 0.2)[:, None]
+        shade = smooth_path(list(a) + list(b[::-1]), closed=True, tension=0.6)
+        j = int(self.n * 0.62)
+        crease = poly_path([Q[j] - N[j] * side * w[j] * 0.05, Q[j] - N[j] * side * w[j] * 0.3], closed=False)
+        h = self.n - 2
+        hem = smooth_path([L[h], Q[h] + (Q[-1] - Q[h]) * 0.5, R[h]], closed=False)
+        return outline, shade, crease, hem
+
+    def groups(self, s_of_t, times):
+        sv = [round(s_of_t(t), 4) for t in times]
+        keep = [j for j in range(len(times)) if j in (0, len(times) - 1) or not (sv[j - 1] == sv[j] == sv[j + 1])]
+
+        def pk(i):   # path keys only where the arm length changes
+            return [[round(times[j], 4), [self.paths(sv[j])[i]]] for j in keep]
+        base, shade = self.colors["base"], self.colors["shade"]
+        return [group("Outline", [], stroke=OUTLINE, width=9, pathKeys=pk(0)),
+                group("Hem", [], stroke=OUTLINE, width=6, pathKeys=pk(3)),
+                group("Crease", [], stroke=OUTLINE, width=6, pathKeys=pk(2)),
+                group("Shade", [], fill=shade, pathKeys=pk(1)),
+                group("Sleeve", [], fill=base, pathKeys=pk(0))]
+
+
 def mic_groups(gx, gy):
     """microphone around the grip point (gx, gy), head up: handle through the hand, ball grille on top"""
     hw, top, bot, R, cy = 26, gy - 70, gy + 175, 50, gy - 114
@@ -321,9 +401,9 @@ def mic_groups(gx, gy):
             group("Handle Outline", [handle], stroke=OUTLINE, width=8), group("Handle", [handle], fill=[44, 44, 50])]
 
 
-def build_suit(talk=(-159, 52, 40)):
-    """talk = (ARM_R rotation, ARM_R squash %, hand angle in the world) of the 'mic at the mouth' pose"""
-    th, sq, hw = talk
+def build_suit(talk=(-155, 16, 30)):
+    """talk = (ARM_R rotation, how much of the arm length is seen %, extra wrist turn) of the 'mic at the mouth' pose"""
+    th, sq, ex = talk
     vec = load_vec("RED_SUIT")
     feet, scale = [420, 1250], 63
     piv = vec["pivots"]
@@ -336,7 +416,6 @@ def build_suit(talk=(-159, 52, 40)):
                           K(1.5, th - 3, [60, 30]), K(t_up, th, HIT), K(2.2, th - 2), K(2.85, th + 2), K(t_talk_end, th - 1),
                           K(3.95, -40, [60, 40]), K(t_rel, -38, HIT), K(4.2, -38), K(4.55, 2, [60, 30]), K(4.7, 0, HIT)],
                   "squash": [K(0, 100), K(1.08, 100), K(1.5, sq, [60, 30]), K(t_talk_end, sq), K(3.95, 100, [60, 40])]},
-        "HAND_R": {"rot": [K(0, 0), K(1.08, 0), K(1.5, hw - th, [60, 30]), K(t_talk_end, hw - th), K(3.95, 0, [60, 40])]},
         "ARM_L": {"rot": [K(0, 0), K(1.4, 0), K(1.7, 10, HIT), K(3.5, 8), K(3.9, 0)]},
         "HEAD": {"rot": [K(0, 0), K(0.25, -3), K(0.5, 0), K(1.2, 0), K(1.6, -5, HIT)] +
                         [K(t, (-7 if i % 2 else -3), [45, 45]) for i, t in enumerate(syll)] + [K(3.6, -4), K(4.2, 0)],
@@ -346,6 +425,16 @@ def build_suit(talk=(-159, 52, 40)):
         "LEGS": {"pos": [K(0, [0, 0])] + [x for i in range(4) for x in (K(1.65 + i * 0.47, [0, -7]), K(1.88 + i * 0.47, [0, 0]))]},
     }
     chars = character(vec, feet, scale, A, front=("ARM_R",))
+    # правая рука — рукав-трубка: к камере укорачивается только ось, толщина и обводка остаются ровными
+    tube = TubeArm(vec, "ARM_R")
+    by = {L["name"]: L for L in chars}
+    sq_v = by["ARM_R"]["squash"]["s"]
+    s_of = lambda t: value(sq_v, t) / 100
+    frames = [round(f / FPS, 4) for f in range(int(DUR * FPS) + 1)]
+    by["ARM_R"]["groups"] = tube.groups(s_of, frames)
+    by["ARM_R"]["squash"] = None
+    twist = lambda t: ex * smoothstep((t - 1.08) / 0.42) * smoothstep((3.95 - t) / 0.45)
+    by["HAND_R"]["rot"] = keys(*sampled(lambda t: round(tube.tangent(s_of(t)) - tube.rest_end + twist(t), 3), 0, DUR))
     bg = [246, 238, 226]
     layers = [background(bg),
               layer("SPOTLIGHT", [group("Light", [ellipse_path(feet[0] + 60, 760, 430, 620)], fill=[255, 250, 240])], blur=90, opacity=90)]
