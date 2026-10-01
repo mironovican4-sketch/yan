@@ -127,7 +127,8 @@ def mode_filter(lab, k, size=5):
     return votes.argmax(0)
 
 
-def vectorize(name, cfg, img_dir, debug_dir=None):
+def vectorize(name, cfg, img_dir, debug_dir=None, hook=None):
+    """hook(ctx) -> (synth, extra): optional extra parts / hidden areas (see lego_scenes/tools/split_dreads.py)"""
     im = np.asarray(Image.open(os.path.join(img_dir, cfg["file"])).convert("RGBA")).astype(np.int32)
     rgb, alpha = im[..., :3], im[..., 3]
     h, w = alpha.shape
@@ -181,6 +182,9 @@ def vectorize(name, cfg, img_dir, debug_dir=None):
     shoulder = {"ARM_L": (float(sL(ys_sh) - 0.06 * tw), ys_sh, xx < xL - (HALF_LINE + 5)),
                 "ARM_R": (float(sR(ys_sh) + 0.06 * tw), ys_sh, xx > xR + (HALF_LINE + 5))}
     dt_core = cv2.distanceTransform(core.astype(np.uint8), cv2.DIST_L2, 5)
+    # synth[part] = {"add": mask, "src": mask}: area added to the part whose colours continue from the nearest src pixel
+    synth, extra = hook(dict(locals())) if hook else ({}, {})
+    out.update(extra)
     for part, pm in poly.items():
         region = core & pm
         region = cv2.morphologyEx(region.astype(np.uint8), cv2.MORPH_OPEN, disk(2)).astype(bool)
@@ -191,6 +195,8 @@ def vectorize(name, cfg, img_dir, debug_dir=None):
         if part == "HEAD":  # neck runs on under the torso: no gap when the head tilts
             cols_neck = region[ttop - 12] & (np.abs(np.arange(w) - cx) < (sR(ttop) - sL(ttop)) * 0.3)
             region |= cols_neck[None, :] & (yy >= ttop - 12) & (yy < ttop + 45)
+        if part in synth and synth[part]["add"].any():
+            region |= synth[part]["add"] & core
         cap = None
         if part in shoulder:   # round shoulder cap: the arm rotates without a sharp seam corner
             px, py, away = shoulder[part]
@@ -228,6 +234,15 @@ def vectorize(name, cfg, img_dir, debug_dir=None):
             _, (iy, ix) = ndimage.distance_transform_edt(~src, return_indices=True)
             over = cap & ~away
             lab = np.where(over, lab[iy, ix], lab)
+        if part in synth and synth[part]["add"].any():
+            src = (lab >= 0) & synth[part]["src"]
+            over = synth[part]["add"] & fillreg & ~src
+            if synth[part].get("mode") == "plain":   # one flat colour: the most common one of the source
+                vals, cnt = np.unique(lab[src], return_counts=True)
+                lab = np.where(over, vals[cnt.argmax()], lab)
+            else:
+                _, (iy, ix) = ndimage.distance_transform_edt(~src, return_indices=True)
+                lab = np.where(over, lab[iy, ix], lab)
         areas = np.array([(lab == i).sum() for i in range(len(cols))])
         base = int(areas.argmax())
         base_col = cols[base]
@@ -237,7 +252,7 @@ def vectorize(name, cfg, img_dir, debug_dir=None):
             if i == base or areas[i] < 30:
                 continue
             m = (lab == i) & fillreg
-            if cols[i].max() < 60:          # black: the outer outline band is drawn by the stroke
+            if cols[i].max() < 60 and not synth.get(part, {}).get("keep_edge"):   # black: the outline band is the stroke
                 m &= ~edge_band
             m = cv2.morphologyEx(m.astype(np.uint8), cv2.MORPH_OPEN, np.ones((2, 2), np.uint8)).astype(bool)
             if m.sum() < 30:
