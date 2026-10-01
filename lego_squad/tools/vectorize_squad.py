@@ -20,6 +20,7 @@ import cv2
 import numpy as np
 import potrace
 from PIL import Image
+from scipy import ndimage
 
 HALF_LINE = 5
 
@@ -166,6 +167,12 @@ def vectorize(name, cfg, img_dir, debug_dir=None):
     out = {"name": name, "size": [w, h], "lineWidth": 2 * HALF_LINE - 1, "parts": {},
            "landmarks": {"ttop": ttop, "tbot": tbot, "cuffL": cuffL, "cuffR": cuffR, "cx": round(cx, 1),
                          "seamL": [round(sL(ttop), 1), round(sL(tbot), 1)], "seamR": [round(sR(ttop), 1), round(sR(tbot), 1)]}}
+    # shoulders: arms turn about a ball joint just outside the seam, upper torso
+    tw = sR(ttop) - sL(ttop)
+    ys_sh = ttop + 0.17 * (tbot - ttop)
+    shoulder = {"ARM_L": (float(sL(ys_sh) - 0.06 * tw), ys_sh, xx < xL - (HALF_LINE + 5)),
+                "ARM_R": (float(sR(ys_sh) + 0.06 * tw), ys_sh, xx > xR + (HALF_LINE + 5))}
+    dt_core = cv2.distanceTransform(core.astype(np.uint8), cv2.DIST_L2, 5)
     for part, pm in poly.items():
         region = core & pm
         region = cv2.morphologyEx(region.astype(np.uint8), cv2.MORPH_OPEN, disk(2)).astype(bool)
@@ -176,6 +183,12 @@ def vectorize(name, cfg, img_dir, debug_dir=None):
         if part == "HEAD":  # neck runs on under the torso: no gap when the head tilts
             cols_neck = region[ttop - 12] & (np.abs(np.arange(w) - cx) < (sR(ttop) - sL(ttop)) * 0.3)
             region |= cols_neck[None, :] & (yy >= ttop - 12) & (yy < ttop + 45)
+        cap = None
+        if part in shoulder:   # round shoulder cap: the arm rotates without a sharp seam corner
+            px, py, away = shoulder[part]
+            r = float(dt_core[int(round(py)), int(round(px))]) - 1
+            cap = ((xx - px) ** 2 + (yy - py) ** 2 <= r * r) & core
+            region |= cap
         if not region.any():
             continue
         fillreg = fill_holes(region, 200000)
@@ -202,6 +215,11 @@ def vectorize(name, cfg, img_dir, debug_dir=None):
         if gold.sum() > 300 and part in ("TORSO", "HEAD"):
             cols = np.vstack([cols, [np.median(rgb[gold & (rgb.max(-1) > 150)], axis=0)]])
             lab = np.where(gold, len(cols) - 1, lab)
+        if cap is not None:   # cap over the seam/torso: continue the arm's own colours (nearest arm pixel)
+            src = (lab >= 0) & away
+            _, (iy, ix) = ndimage.distance_transform_edt(~src, return_indices=True)
+            over = cap & ~away
+            lab = np.where(over, lab[iy, ix], lab)
         areas = np.array([(lab == i).sum() for i in range(len(cols))])
         base = int(areas.argmax())
         base_col = cols[base]
@@ -224,18 +242,15 @@ def vectorize(name, cfg, img_dir, debug_dir=None):
         print(name, part, "base", out["parts"][part]["base"]["color"], "prints", len(prints),
               "verts", sum(len(p["v"]) for pr in prints for p in pr["paths"]))
     # joint pivots (image px): neck, hips, feet, shoulders (just outside the seam, upper torso), wrists
-    H = tbot - ttop
-    tw = sR(ttop) - sL(ttop)
     def wrist(part, cuff):
         reg = poly[part] & core
         cols = np.nonzero(reg[cuff + 6:cuff + 26].any(0))[0]
         return [round(float((cols.min() + cols.max()) / 2), 1), cuff + 12]
     feet = int(np.nonzero((poly["LEGS"] & fig).any(1))[0].max())
-    ys_sh = ttop + 0.17 * H
     out["pivots"] = {
         "LEGS": [round(float(cx), 1), feet], "TORSO": [round(float(cx), 1), tbot], "HEAD": [round(float(cx), 1), ttop],
-        "ARM_L": [round(float(sL(ys_sh) - 0.06 * tw), 1), round(ys_sh, 1)],
-        "ARM_R": [round(float(sR(ys_sh) + 0.06 * tw), 1), round(ys_sh, 1)],
+        "ARM_L": [round(shoulder["ARM_L"][0], 1), round(ys_sh, 1)],
+        "ARM_R": [round(shoulder["ARM_R"][0], 1), round(ys_sh, 1)],
         "HAND_L": wrist("HAND_L", cuffL), "HAND_R": wrist("HAND_R", cuffR),
     }
     print(name, "pivots", out["pivots"])

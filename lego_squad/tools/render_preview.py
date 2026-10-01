@@ -2,9 +2,9 @@
 
 Reads the character list, rig and animations (SQUAD block) from the .jsx and the vector parts from
 vectors/<NAME>.jsxinc, and mirrors the AE comp: base fill + stacked colour prints + uniform outline
-stroke per part, parenting, breathing, and the "Squash" (arm raised forward) that keeps the stroke width.
+stroke per part, parenting (hands ride on the arms) and breathing. No motion blur, like the comp.
 
-Usage: python3 render_preview.py <NAME|all> [--out-dir preview] [--frames 0,30] [--mb 8] [--static]
+Usage: python3 render_preview.py <NAME|all> [--out-dir preview] [--frames 0,30] [--static out.png]
 """
 import argparse
 import json
@@ -89,7 +89,7 @@ def flatten(p, M, n=12):
 
 
 def raster_part(part, lw, outline, M=np.eye(3)):
-    """premultiplied RGBA sprite of one part + canvas offset; M = path transform (squash)"""
+    """premultiplied RGBA sprite of one part + canvas offset; M = path transform"""
     groups = [("base", part["base"]["color"], part["base"]["paths"])] + \
              [("print", pr["color"], pr["paths"]) for pr in reversed(part["prints"])]
     polys = [[flatten(p, M) for p in paths] for _, _, paths in groups]
@@ -147,8 +147,7 @@ def static_check(name, out):
     Image.fromarray((np.clip(img, 0, 1) * 255).astype(np.uint8)).save(out)
 
 
-PARENT = {"LEGS": "", "TORSO": "LEGS", "HEAD": "TORSO", "ARM_L": "TORSO", "ARM_R": "TORSO", "HAND_L": "TORSO", "HAND_R": "TORSO"}
-FOLLOW = {"HAND_L": "ARM_L", "HAND_R": "ARM_R"}
+PARENT = {"LEGS": "", "TORSO": "LEGS", "HEAD": "TORSO", "ARM_L": "TORSO", "ARM_R": "TORSO", "HAND_L": "ARM_L", "HAND_R": "ARM_R"}
 
 
 class Scene:
@@ -161,8 +160,7 @@ class Scene:
         self.piv = self.vec["pivots"]
         self.lw = self.vec["lineWidth"]
         self.outline = self.cfg["outline"]
-        self.sprites = {p: raster_part(self.vec["parts"][p], self.lw, self.outline) for p in ORDER if not p.startswith("ARM")}
-        self.arm_cache = {}
+        self.sprites = {p: raster_part(self.vec["parts"][p], self.lw, self.outline) for p in ORDER}
         W, H = self.cfg["width"], self.cfg["height"]
         self.W, self.H = W, H
         self.bg = np.array(ch["bg"], np.float32) / 255
@@ -170,21 +168,12 @@ class Scene:
     def prop(self, part, name, t, default):
         return kv(self.anim.get(part, {}).get(name), t, default)
 
-    def squash(self, arm, t):
-        return float(self.prop(arm, "squash", t, 100)) / 100
-
     def local(self, part, t):
         pv = self.piv[part]
         rot = float(self.prop(part, "rot", t, 0))
         if PARENT[part]:
             pos = np.array(pv, float) + self.prop(part, "pos", t, [0, 0])
             scale = self.prop(part, "scale", t, [100, 100]) / 100
-            if part in FOLLOW:  # parent.fromComp(arm.toComp(wrist squashed about the shoulder))
-                arm = FOLLOW[part]
-                s = self.squash(arm, t)
-                sp = self.piv[arm]
-                wrist = self.world(arm, t) @ np.array([pv[0], sp[1] + (pv[1] - sp[1]) * s, 1.0])
-                pos = (np.linalg.inv(self.world(PARENT[part], t)) @ wrist)[:2]
         else:
             pos = np.array(self.cfg["feet"], float) + self.prop(part, "pos", t, [0, 0])
             scale = [self.ch["scale"] / 100] * 2
@@ -198,14 +187,6 @@ class Scene:
         p = PARENT[part]
         return self.world(p, t) @ M if p else M
 
-    def arm_sprite(self, arm, s):
-        key = round(s, 3)
-        if key not in self.arm_cache:
-            py = self.piv[arm][1]
-            M = np.array([[1, 0, 0], [0, s, py * (1 - s)], [0, 0, 1.0]])
-            self.arm_cache[key] = raster_part(self.vec["parts"][arm], self.lw, self.outline, M)
-        return self.arm_cache[key]
-
     def render(self, t):
         out = np.empty((self.H, self.W, 3), np.float32)
         out[:] = self.bg
@@ -217,14 +198,14 @@ class Scene:
         sh = cv2.GaussianBlur(sh, (0, 0), 10) * 0.18 * (1 - min(lift / 400, 0.7))
         out *= (1 - sh[..., None])
         for part in ORDER:
-            spr, off = self.arm_sprite(part, self.squash(part, t)) if part.startswith("ARM") else self.sprites[part]
+            spr, off = self.sprites[part]
             M = self.world(part, t) @ np.array([[1, 0, off[0]], [0, 1, off[1]], [0, 0, 1.0]])
             lay = cv2.warpAffine(spr, M[:2], (self.W, self.H), flags=cv2.INTER_LINEAR, borderValue=0)
             out = out * (1 - lay[..., 3:4]) + lay[..., :3]
         return out
 
 
-def render_char(ch, out_dir, frames=None, mb=8):
+def render_char(ch, out_dir, frames=None, mb=1):
     sc = Scene(ch)
     cfg = sc.cfg
     fps, dur = cfg["fps"], cfg["duration"]
@@ -264,7 +245,7 @@ if __name__ == "__main__":
     ap.add_argument("--static", default=None)
     ap.add_argument("--out-dir", default=os.path.join(ROOT, "preview"))
     ap.add_argument("--frames", default=None)
-    ap.add_argument("--mb", type=int, default=8)
+    ap.add_argument("--mb", type=int, default=1, help="motion-blur subsamples (1 = off, as in the comp)")
     args = ap.parse_args()
     if args.static:
         static_check(args.name, args.static)
