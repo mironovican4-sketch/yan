@@ -401,7 +401,7 @@ def mic_groups(gx, gy):
             group("Handle Outline", [handle], stroke=OUTLINE, width=8), group("Handle", [handle], fill=[44, 44, 50])]
 
 
-def build_suit(talk=(-155, 16, 30)):
+def build_suit(talk=(-22, -38, 10)):
     """talk = (ARM_R rotation, how much of the arm length is seen %, extra wrist turn) of the 'mic at the mouth' pose"""
     th, sq, ex = talk
     vec = load_vec("RED_SUIT")
@@ -417,8 +417,8 @@ def build_suit(talk=(-155, 16, 30)):
                           K(3.95, -40, [60, 40]), K(t_rel, -38, HIT), K(4.2, -38), K(4.55, 2, [60, 30]), K(4.7, 0, HIT)],
                   "squash": [K(0, 100), K(1.08, 100), K(1.5, sq, [60, 30]), K(t_talk_end, sq), K(3.95, 100, [60, 40])]},
         "ARM_L": {"rot": [K(0, 0), K(1.4, 0), K(1.7, 10, HIT), K(3.5, 8), K(3.9, 0)]},
-        "HEAD": {"rot": [K(0, 0), K(0.25, -3), K(0.5, 0), K(1.2, 0), K(1.6, -5, HIT)] +
-                        [K(t, (-7 if i % 2 else -3), [45, 45]) for i, t in enumerate(syll)] + [K(3.6, -4), K(4.2, 0)],
+        "HEAD": {"rot": [K(0, 0), K(0.25, -3), K(0.5, 0), K(1.2, 0), K(1.6, 8, HIT)] +   # leans into the mic while talking
+                        [K(t, (5 if i % 2 else 9), [45, 45]) for i, t in enumerate(syll)] + [K(3.6, 7), K(4.2, 0)],
                  "pos": [K(0, [0, 0]), K(0.25, [0, 10]), K(0.5, [0, 0]), K(1.6, [0, 0])] +
                         [K(t, [0, 7 if i % 2 else 0], [45, 45]) for i, t in enumerate(syll)] + [K(3.6, [0, 0])]},
         "TORSO": {"rot": [K(0, 0), K(0.6, 0), K(1.0, -2, HIT), K(1.6, 1.5), K(2.6, -1), K(3.5, 1.5), K(4.2, 0)]},
