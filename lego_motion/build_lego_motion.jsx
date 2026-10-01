@@ -3,21 +3,22 @@
  * LEGO-персонаж · моушн "рука к лицу" · 1080 x 1350 · 30 fps · 5 s (бесшовный луп)
  * ------------------------------------------------------------------------------------
  * Сборщик композиции для After Effects (ExtendScript, AE CC 2018+).
- * Скрипт должен лежать рядом с папкой assets/ (7 PNG: части персонажа на общем холсте 1122x1500).
+ * Персонаж целиком векторный: каждая деталь — шейп-слой с ровными заливками и обводкой.
+ * Рядом со скриптом должен лежать lego_vectors.jsxinc (контуры деталей, tools/vectorize.py).
  *
  * Запуск:  File > Scripts > Run Script File...  ->  build_lego_motion.jsx
  *
- * Риг (все PNG на одном холсте, поэтому у ребёнка Position = точке сустава в пикселях картинки):
+ * Риг (координаты контуров = пиксели исходной картинки 1122x1500, поэтому Position ребёнка = точка сустава):
  *   LEGS  (корень, стоит в кадре)
  *     TORSO   точка вращения — бёдра;  дыхание — выражение на Scale
  *       HEAD    шея
  *       ARM_R   плечо  -> HAND_R  запястье
- *       ARM_L   плечо (поднимается вперёд: Scale Y + лёгкий Rotation)   <- эта рука идёт к лицу
+ *       ARM_L   плечо: подъём вперёд = Scale группы "Arm" (обводка снаружи группы, толщина линии не меняется)
  *       HAND_L  едет за запястьем ARM_L выражением, без деформации
- *   CONTROLS  слайдеры: Breath (дыхание), Shadow Opacity; цвет фона
+ *   CONTROLS  цвета (Skin, Hat, Pants, Outline, Background), Breath, Shadow Opacity
  *
- * Сюжет: стоит и дышит -> замах-подготовка -> поднимает руку и закрывает лицо ладонью,
- * голова чуть опускается -> держит позу -> рука возвращается вниз ровно в стартовую позу к 5 s.
+ * Сюжет: стоит и дышит -> замах -> поднимает руку и закрывает лицо ладонью, голова чуть опускается
+ * -> держит позу -> рука возвращается вниз ровно в стартовую позу к 5 s.
  * Все движения — обычные ключи с easing (блок ANIM), их удобно править в Graph Editor.
  */
 
@@ -35,31 +36,32 @@
         charScale: 90,
         feet: [540, 1215],
         background: [244, 241, 236],
+        outline: [26, 26, 24],
         breath: 1.2,
         breathPeriod: 2.5
     };
 
-    // Части персонажа (снизу вверх по слоям). pivot — точка вращения в пикселях PNG 1122x1500
+    // Детали персонажа (снизу вверх по слоям). pivot — точка вращения в пикселях исходника 1122x1500
     var RIG = [
-        { name: "LEGS", file: "legs.png", pivot: [565, 1360], parent: "" },
-        { name: "HEAD", file: "head.png", pivot: [565, 520], parent: "TORSO" },
-        { name: "TORSO", file: "torso.png", pivot: [565, 918], parent: "LEGS" },
-        { name: "ARM_R", file: "arm_right.png", pivot: [767, 600], parent: "TORSO" },
-        { name: "HAND_R", file: "hand_right.png", pivot: [846, 868], parent: "ARM_R" },
-        { name: "ARM_L", file: "arm_left.png", pivot: [362, 600], parent: "TORSO" },
-        { name: "HAND_L", file: "hand_left.png", pivot: [283, 868], parent: "TORSO", follow: "ARM_L" }
+        { name: "LEGS", pivot: [565, 1360], parent: "" },
+        { name: "HEAD", pivot: [565, 520], parent: "TORSO" },
+        { name: "TORSO", pivot: [565, 918], parent: "LEGS" },
+        { name: "ARM_R", pivot: [767, 600], parent: "TORSO" },
+        { name: "HAND_R", pivot: [846, 868], parent: "ARM_R" },
+        { name: "ARM_L", pivot: [362, 600], parent: "TORSO", foreshorten: true },
+        { name: "HAND_L", pivot: [283, 868], parent: "TORSO", follow: "ARM_L" }
     ];
 
     // Анимация: [время, значение, [influence in, influence out]]. pos — смещение от точки сустава.
     var ANIM = {
         // Рука LEGO жёсткая и крутится только в плече вперёд-вверх: во фронтальном виде это
-        // укорочение по длине (Scale Y: 100 -> 0 = смотрит в камеру -> минус = поднята выше плеча)
+        // укорочение по длине (squash Y: 100 -> 0 = смотрит в камеру -> минус = поднята выше плеча)
         // плюс небольшой доворот к лицу (Rotation). Кисть масштаб руки не наследует и не искажается.
         ARM_L: {
             rot: [[0.55, 0, [33, 40]], [0.85, 7, [70, 30]], [1.55, 27, [60, 40]], [1.85, 22, [60, 50]], [2.10, 24, [70, 33]],
                   [4.15, 24, [33, 55]], [4.85, 0, [70, 33]]],
-            scale: [[0.85, [100, 100], [33, 45]], [1.55, [100, -84], [60, 40]], [1.85, [100, -70], [60, 50]], [2.10, [100, -75], [70, 33]],
-                    [4.15, [100, -75], [33, 55]], [4.88, [100, 103], [60, 50]], [5.00, [100, 100], [60, 33]]]
+            squash: [[0.85, [100, 100], [33, 45]], [1.55, [100, -84], [60, 40]], [1.85, [100, -70], [60, 50]], [2.10, [100, -75], [70, 33]],
+                     [4.15, [100, -75], [33, 55]], [4.88, [100, 103], [60, 50]], [5.00, [100, 100], [60, 33]]]
         },
         HAND_L: {
             rot: [[0.90, 0, [33, 40]], [1.60, -124, [70, 40]], [1.95, -110, [60, 50]], [2.20, -114, [70, 33]],
@@ -85,8 +87,9 @@
     };
 
     var W = CFG.width, H = CFG.height;
-    var WARN = [];
     var CTRL = 'thisComp.layer("CONTROLS")';
+    var COLOR_CTRL = { skin: "Skin", green: "Hat", white: "Pants" };
+    var VEC = null;
 
     // =====================================================================
     // 2. ХЕЛПЕРЫ
@@ -141,18 +144,95 @@
         return name;
     }
 
-    function findAssets() {
+    function loadVectors() {
         var here = new File($.fileName).parent;
-        var dir = new Folder(here.fsName + "/assets");
-        if (!dir.exists) dir = Folder.selectDialog("Select the lego_motion/assets folder");
-        if (!dir) return null;
-        for (var i = 0; i < RIG.length; i++) {
-            if (!new File(dir.fsName + "/" + RIG[i].file).exists) {
-                alert("Missing asset: " + RIG[i].file + "\nin " + dir.fsName);
-                return null;
+        var f = new File(here.fsName + "/lego_vectors.jsxinc");
+        if (!f.exists) f = File.openDialog("Select lego_vectors.jsxinc");
+        if (!f || !f.exists) return null;
+        return $.evalFile(f);
+    }
+
+    // ---------- шейпы (каждое обращение заново от слоя: AE инвалидирует старые ссылки) ----------
+    function makeShape(p) {
+        var s = new Shape();
+        s.vertices = p.v;
+        s.inTangents = p.i;
+        s.outTangents = p.o;
+        s.closed = true;
+        return s;
+    }
+    // группа с контурами; parentVecs — "ADBE Vectors Group", куда добавить
+    function addPathsGroup(getVecs, name, paths) {
+        var g = getVecs().addProperty("ADBE Vector Group");
+        g.name = name;
+        var gi = getVecs().numProperties;
+        for (var i = 0; i < paths.length; i++) {
+            var p = getVecs().property(gi).property("ADBE Vectors Group").addProperty("ADBE Vector Shape - Group");
+            p.property("ADBE Vector Shape").setValue(makeShape(paths[i]));
+        }
+        return gi;
+    }
+    function addStroke(vecs, colorExpr) {
+        var s = vecs.addProperty("ADBE Vector Graphic - Stroke");
+        s.property("ADBE Vector Stroke Color").setValue(rgba(CFG.outline));
+        s.property("ADBE Vector Stroke Width").setValue(VEC.lineWidth);
+        s.property("ADBE Vector Stroke Line Cap").setValue(2);
+        s.property("ADBE Vector Stroke Line Join").setValue(2);
+        s.property("ADBE Vector Stroke Color").expression = colorExpr;
+    }
+    // Non-Zero (по умолчанию): у дырок контуры в обратную сторону, а перекрытия кусков сливаются без щелей
+    function addFill(vecs, color, colorExpr) {
+        var f = vecs.addProperty("ADBE Vector Graphic - Fill");
+        f.property("ADBE Vector Fill Color").setValue(rgba(color));
+        f.property("ADBE Vector Fill Color").expression = colorExpr;
+    }
+    function ctrlColor(name) { return CTRL + ".effect(\"" + name + "\")(1)"; }
+
+    // Деталь персонажа: сверху линии-детали (лицо, пресс, тату), под ними цветные куски с обводкой
+    function buildPart(comp, r) {
+        var part = VEC.parts[r.name];
+        var l = comp.layers.addShape();
+        l.name = r.name;
+        l.label = r.parent ? 13 : 9;
+        l.motionBlur = true;
+        var root = function () { return l.property("ADBE Root Vectors Group"); };
+        var i, gi;
+        if (part.details.length) {
+            gi = addPathsGroup(root, "Line Art", part.details);
+            addFill(root().property(gi).property("ADBE Vectors Group"), CFG.outline, ctrlColor("Outline"));
+        }
+        if (r.foreshorten) {
+            // все куски руки в группе "Arm" (её Scale = подъём вперёд), заливка и обводка — снаружи группы
+            var arm = root().addProperty("ADBE Vector Group");
+            arm.name = "Arm";
+            var ai = root().numProperties;
+            var armVecs = function () { return root().property(ai).property("ADBE Vectors Group"); };
+            for (i = 0; i < part.regions.length; i++) addPathsGroup(armVecs, "Piece " + (i + 1), part.regions[i].paths);
+            var xf = root().property(ai).property("ADBE Vector Transform Group");
+            xf.property("ADBE Vector Anchor").setValue(r.pivot);
+            xf.property("ADBE Vector Position").setValue(r.pivot);
+            addStroke(root(), ctrlColor("Outline"));
+            addFill(root(), part.regions[0].color, ctrlColor(COLOR_CTRL[part.regions[0].name]));
+        } else {
+            for (i = 0; i < part.regions.length; i++) {
+                var rg = part.regions[i];
+                gi = addPathsGroup(root, (COLOR_CTRL[rg.name] || rg.name) + " " + (i + 1), rg.paths);
+                var vecs = root().property(gi).property("ADBE Vectors Group");
+                addStroke(vecs, ctrlColor("Outline"));
+                addFill(root().property(gi).property("ADBE Vectors Group"), rg.color, ctrlColor(COLOR_CTRL[rg.name]));
             }
         }
-        return dir;
+        tr(l, "anchor").setValue(r.pivot);
+        return l;
+    }
+
+    function partColor(cls) {
+        for (var n in VEC.parts) {
+            if (!VEC.parts.hasOwnProperty(n)) continue;
+            var rs = VEC.parts[n].regions;
+            for (var i = 0; i < rs.length; i++) if (rs[i].name === cls) return rs[i].color;
+        }
+        return [128, 128, 128];
     }
 
     // =====================================================================
@@ -162,113 +242,95 @@
         var c = comp.layers.addNull(CFG.duration);
         c.name = "CONTROLS";
         c.label = 2;
-        var fx = c.property("ADBE Effect Parade");
-        var e = fx.addProperty("ADBE Slider Control");
-        e.name = "Breath";
-        e.property(1).setValue(CFG.breath);
-        e = fx.addProperty("ADBE Slider Control");
-        e.name = "Shadow Opacity";
-        e.property(1).setValue(18);
-        e = fx.addProperty("ADBE Color Control");
-        e.name = "Background";
-        e.property(1).setValue(rgba(CFG.background));
+        var fx = function () { return c.property("ADBE Effect Parade"); };
+        var colors = [["Skin", partColor("skin")], ["Hat", partColor("green")], ["Pants", partColor("white")],
+                      ["Outline", CFG.outline], ["Background", CFG.background]];
+        for (var i = 0; i < colors.length; i++) {
+            var e = fx().addProperty("ADBE Color Control");
+            e.name = colors[i][0];
+            e.property(1).setValue(rgba(colors[i][1]));
+        }
+        var sl = [["Breath", CFG.breath], ["Shadow Opacity", 18]];
+        for (i = 0; i < sl.length; i++) {
+            var s = fx().addProperty("ADBE Slider Control");
+            s.name = sl[i][0];
+            s.property(1).setValue(sl[i][1]);
+        }
         var m = c.property("ADBE Marker");
         var marks = [[0.55, "ANTICIPATION"], [0.85, "HAND TO FACE"], [2.1, "HOLD"], [4.15, "RETURN -> loop"]];
-        for (var i = 0; i < marks.length; i++) {
+        for (i = 0; i < marks.length; i++) {
             try { m.setValueAtTime(marks[i][0], new MarkerValue(marks[i][1])); } catch (err) { }
         }
         return c;
     }
 
-    function shapeLayer(comp, name) {
+    function simpleShape(comp, name, kind, size, color, colorExpr) {
         var l = comp.layers.addShape();
         l.name = name;
         var g = l.property("ADBE Root Vectors Group").addProperty("ADBE Vector Group");
         g.name = name;
-        return l;
-    }
-
-    function buildBackground(comp) {
-        var l = shapeLayer(comp, "BG");
-        var v = l.property("ADBE Root Vectors Group").property(1).property("ADBE Vectors Group");
-        v.addProperty("ADBE Vector Shape - Rect").property("ADBE Vector Rect Size").setValue([W + 20, H + 20]);
-        var f = v.addProperty("ADBE Vector Graphic - Fill");
-        f.property("ADBE Vector Fill Color").setValue(rgba(CFG.background));
-        v.property("ADBE Vector Graphic - Fill").property("ADBE Vector Fill Color").expression = CTRL + ".effect(\"Background\")(1)";
-        return l;
-    }
-
-    // мягкая тень под ногами (сжимается, когда корпус наклоняется)
-    function buildShadow(comp) {
-        var l = shapeLayer(comp, "FLOOR_SHADOW");
-        var v = l.property("ADBE Root Vectors Group").property(1).property("ADBE Vectors Group");
-        v.addProperty("ADBE Vector Shape - Ellipse").property("ADBE Vector Ellipse Size").setValue([560, 46]);
-        var f = v.addProperty("ADBE Vector Graphic - Fill");
-        f.property("ADBE Vector Fill Color").setValue([0, 0, 0, 1]);
-        tr(l, "pos").setValue([CFG.feet[0], CFG.feet[1] + 6]);
-        tr(l, "opacity").expression = CTRL + ".effect(\"Shadow Opacity\")(1)";
-        var blur = l.property("ADBE Effect Parade").addProperty("ADBE Gaussian Blur 2");
-        blur.property(1).setValue(22);
+        var v = function () { return l.property("ADBE Root Vectors Group").property(1).property("ADBE Vectors Group"); };
+        if (kind === "rect") v().addProperty("ADBE Vector Shape - Rect").property("ADBE Vector Rect Size").setValue(size);
+        else v().addProperty("ADBE Vector Shape - Ellipse").property("ADBE Vector Ellipse Size").setValue(size);
+        addFill(v(), color, colorExpr);
         return l;
     }
 
     function run() {
-        var dir = findAssets();
-        if (!dir) return;
+        VEC = loadVectors();
+        if (!VEC) { alert("lego_vectors.jsxinc not found next to the script."); return; }
         app.beginUndoGroup("Build LEGO facepalm");
         try {
             var comp = app.project.items.addComp(uniqueItemName(CFG.compName), W, H, 1, CFG.duration, CFG.fps);
-            var folder = app.project.items.addFolder(uniqueItemName(CFG.compName + " parts"));
             comp.bgColor = rgb(CFG.background);
             comp.motionBlur = true;
             comp.shutterAngle = 180;
             comp.shutterPhase = -90;
 
             var ctrl = buildControls(comp);
-            buildBackground(comp);
-            buildShadow(comp);
+            simpleShape(comp, "BG", "rect", [W + 20, H + 20], CFG.background, ctrlColor("Background"));
+            var sh = simpleShape(comp, "FLOOR_SHADOW", "ellipse", [560, 46], [0, 0, 0], "[0, 0, 0, 1]");
+            tr(sh, "pos").setValue([CFG.feet[0], CFG.feet[1] + 6]);
+            tr(sh, "opacity").expression = ctrlColor("Shadow Opacity");
+            sh.property("ADBE Effect Parade").addProperty("ADBE Gaussian Blur 2").property(1).setValue(22);
 
             var layers = {}, i, r;
-            for (i = 0; i < RIG.length; i++) {
-                r = RIG[i];
-                var io = new ImportOptions(new File(dir.fsName + "/" + r.file));
-                io.importAs = ImportAsType.FOOTAGE;
-                var item = app.project.importFile(io);
-                item.parentFolder = folder;
-                try { item.mainSource.alphaMode = AlphaMode.STRAIGHT; } catch (e) { }
-                var l = comp.layers.add(item);
-                l.name = r.name;
-                l.motionBlur = true;
-                l.label = r.parent ? 13 : 9;
-                tr(l, "anchor").setValue(r.pivot);
-                layers[r.name] = l;
-            }
-            // иерархия: у ребёнка Position = точка сустава (холсты совпадают)
+            for (i = 0; i < RIG.length; i++) layers[RIG[i].name] = buildPart(comp, RIG[i]);
+            // иерархия: Position ребёнка = точка сустава (все контуры в координатах исходника)
             for (i = 0; i < RIG.length; i++) {
                 r = RIG[i];
                 var L = layers[r.name];
                 if (r.parent) {
                     L.parent = layers[r.parent];
                     tr(L, "pos").setValue(r.pivot);
-                    // кисть едет за точкой запястья руки, но не наследует её масштаб
-                    if (r.follow) {
-                        tr(L, "pos").expression = "var a = thisComp.layer(\"" + r.follow + "\");\n" +
-                            "parent.fromComp(a.toComp([" + r.pivot[0] + ", " + r.pivot[1] + "]))";
-                    }
                 } else {
                     tr(L, "pos").setValue(CFG.feet);
                     tr(L, "scale").setValue([CFG.charScale, CFG.charScale]);
+                }
+                if (r.follow) {
+                    // кисть едет за запястьем руки (с учётом Scale группы "Arm"), но не наследует её масштаб
+                    tr(L, "pos").expression = [
+                        "var a = thisComp.layer(\"" + r.follow + "\");",
+                        "var g = a.content(\"Arm\").transform;",
+                        "var p = [g.position[0] + (" + r.pivot[0] + " - g.anchorPoint[0]) * g.scale[0] / 100,",
+                        "         g.position[1] + (" + r.pivot[1] + " - g.anchorPoint[1]) * g.scale[1] / 100];",
+                        "parent.fromComp(a.toComp(p))"
+                    ].join("\n");
                 }
             }
             // ключи
             for (var name in ANIM) {
                 if (!ANIM.hasOwnProperty(name)) continue;
-                var A = ANIM[name], lay = layers[name];
+                var A = ANIM[name], lay = layers[name], pivot = null;
+                for (i = 0; i < RIG.length; i++) if (RIG[i].name === name) pivot = RIG[i].pivot;
                 if (A.rot) keys(tr(lay, "rot"), A.rot);
                 if (A.scale) keys(tr(lay, "scale"), A.scale);
+                if (A.squash) {
+                    keys(lay.property("ADBE Root Vectors Group").property("Arm").property("ADBE Vector Transform Group")
+                        .property("ADBE Vector Scale"), A.squash);
+                }
                 if (A.pos) {
-                    var pv = [], pivot = null;
-                    for (i = 0; i < RIG.length; i++) if (RIG[i].name === name) pivot = RIG[i].pivot;
+                    var pv = [];
                     for (i = 0; i < A.pos.length; i++) {
                         pv.push([A.pos[i][0], [pivot[0] + A.pos[i][1][0], pivot[1] + A.pos[i][1][1]], A.pos[i][2]]);
                     }
@@ -284,10 +346,8 @@
             ctrl.moveToBeginning();
             comp.openInViewer();
             comp.time = 3;
-            var msg = "LEGO facepalm built: " + comp.name + " (" + W + "x" + H + ", " + CFG.fps + " fps, " + CFG.duration + " s)\n" +
-                      "Keyframes: ARM_L / HAND_L / HEAD / TORSO / ARM_R / HAND_R. Controls: CONTROLS layer.";
-            if (WARN.length) msg += "\n\nWarnings:\n- " + WARN.join("\n- ");
-            alert(msg);
+            alert("LEGO facepalm built: " + comp.name + " (" + W + "x" + H + ", " + CFG.fps + " fps, " + CFG.duration + " s)\n" +
+                  "Vector parts: LEGS / TORSO / HEAD / ARM_L / HAND_L / ARM_R / HAND_R. Colors + breath: CONTROLS layer.");
         } catch (e) {
             alert("LEGO facepalm build failed at line " + e.line + ":\n" + e.toString());
         } finally {

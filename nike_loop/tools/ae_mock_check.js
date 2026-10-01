@@ -286,6 +286,9 @@ const sandbox = {
   alert: (m) => { sandbox._alerts.push(m); }, _alerts: [],
 };
 sandbox.Folder.selectDialog = () => null;
+sandbox.File.openDialog = () => null;
+// $.evalFile: evaluate a data/script file in the same context and return its value
+sandbox.$.evalFile = (f) => vm.runInContext(fs.readFileSync(f.fsName || String(f), "utf8"), sandbox, { filename: f.fsName || String(f) });
 vm.createContext(sandbox);
 // ExtendScript is ES3: remove ES5+ helpers so accidental use fails loudly
 vm.runInContext(`

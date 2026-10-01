@@ -1,10 +1,11 @@
-"""Preview of the LEGO facepalm rig built by build_lego_motion.jsx.
+"""Preview of the vector LEGO facepalm built by build_lego_motion.jsx.
 
-CFG, RIG and ANIM are parsed from the .jsx, and transforms follow AE's parenting math
-(position/anchor/rotation/scale, children in the shared 1122x1500 canvas space), so the preview
-matches the AE comp. Motion blur: 180-degree shutter, subsampled.
+CFG, RIG and ANIM are parsed from the .jsx and the shapes from lego_vectors.jsxinc, so the preview
+follows the AE comp: every part is filled + stroked from the same bezier paths, the raised arm is
+re-rasterized each frame with its group squash (stroke width stays constant, like in AE), and the
+hand follows the wrist without inheriting that squash. Motion blur: 180-degree shutter, subsampled.
 
-Usage: python3 render_preview.py --out preview.mp4 [--sheet storyboard.jpg] [--frames 0,30,...]
+Usage: python3 render_preview.py --out preview.mp4 [--sheet storyboard.jpg] [--frames 0,30,...] [--mb 10]
 """
 import argparse
 import json
@@ -37,7 +38,9 @@ def js_block(name, opener):
 
 
 CFG, RIG, ANIM = js_block("CFG", "{"), js_block("RIG", "["), js_block("ANIM", "{")
+VEC = json.loads(open(os.path.join(ROOT, "lego_vectors.jsxinc")).read().split("\n", 1)[1].strip()[1:-1])
 W, H, FPS, DUR = CFG["width"], CFG["height"], CFG["fps"], CFG["duration"]
+SS = 3  # supersampling for anti-aliased edges
 
 
 def _bez(u, x1, y1, x2, y2):
@@ -73,18 +76,80 @@ def affine(pos, rot, scale, anchor):
     return M
 
 
+# ----------------------------------------------------------------------------- vector raster
+def flatten(p, M, n=14):
+    v, I, O = np.array(p["v"], float), np.array(p["i"], float), np.array(p["o"], float)
+    pts = []
+    m = len(v)
+    for k in range(m):
+        p0, p3 = v[k], v[(k + 1) % m]
+        c1, c2 = p0 + O[k], p3 + I[(k + 1) % m]
+        ts = [0.0] if (not O[k].any() and not I[(k + 1) % m].any()) else np.linspace(0, 1, n, endpoint=False)
+        for t in ts:
+            pts.append((1 - t) ** 3 * p0 + 3 * (1 - t) ** 2 * t * c1 + 3 * (1 - t) * t * t * c2 + t ** 3 * p3)
+    pts = np.array(pts)
+    return pts @ M[:2, :2].T + M[:2, 2]
+
+
+def raster_part(part, M=np.eye(3)):
+    """premultiplied RGBA sprite of a part (canvas px, after group transform M) + its canvas offset"""
+    lw = VEC["lineWidth"]
+    polys = {id(p): flatten(p, M) for rg in part["regions"] for p in rg["paths"]}
+    polys.update({id(p): flatten(p, M) for p in part["details"]})
+    allp = np.concatenate(list(polys.values()))
+    x0, y0 = np.floor(allp.min(0) - lw - 2).astype(int)
+    x1, y1 = np.ceil(allp.max(0) + lw + 2).astype(int)
+    w, h = x1 - x0, y1 - y0
+    shape = (h * SS, w * SS)
+    off = np.array([x0, y0], float)
+    q = lambda pts: np.round((pts - off) * SS * 16).astype(np.int32)
+    col = np.zeros(shape + (3,), np.float32)
+    al = np.zeros(shape, np.float32)
+    line = np.array(CFG["outline"], np.float32) / 255
+
+    def fill_nz(paths):  # non-zero winding, like AE's default fill rule
+        acc = np.zeros(shape, np.int16)
+        for p in paths:
+            pts = polys[id(p)]
+            area = 0.5 * np.sum(pts[:, 0] * np.roll(pts[:, 1], -1) - np.roll(pts[:, 0], -1) * pts[:, 1])
+            m = np.zeros(shape, np.uint8)
+            cv2.fillPoly(m, [q(pts)], 1, lineType=cv2.LINE_8, shift=4)
+            acc += np.sign(area).astype(np.int16) * m
+        return (acc != 0).astype(np.float32)
+
+    def stroke(paths):
+        m = np.zeros(shape, np.uint8)
+        for p in paths:
+            cv2.polylines(m, [q(polys[id(p)])], True, 1, thickness=int(round(lw * SS)), lineType=cv2.LINE_8, shift=4)
+        return m.astype(np.float32)
+
+    def over(mask, c):
+        nonlocal col, al
+        col = col * (1 - mask[..., None]) + c * mask[..., None]
+        al = np.maximum(al, mask)
+
+    for rg in reversed(part["regions"]):          # AE: first group in the list is drawn on top
+        over(fill_nz(rg["paths"]), np.array(rg["color"], np.float32) / 255)
+        over(stroke(rg["paths"]), line)
+    over(fill_nz(part["details"]), line)
+    small = lambda x: cv2.resize(x, (w, h), interpolation=cv2.INTER_AREA)
+    a = small(al)
+    return np.dstack([small(col * al[..., None]), a]), off
+
+
 class Scene:
     def __init__(self):
-        self.img = {}
-        for r in RIG:
-            a = np.asarray(Image.open(os.path.join(ROOT, "assets", r["file"])).convert("RGBA"), np.float32) / 255
-            a[..., :3] *= a[..., 3:4]
-            self.img[r["name"]] = a
         self.rig = {r["name"]: r for r in RIG}
+        self.sprites = {r["name"]: raster_part(VEC["parts"][r["name"]]) for r in RIG if not r.get("foreshorten")}
         self.bg = np.array(CFG["background"], np.float32) / 255
         sh = np.zeros((H, W), np.float32)
         cv2.ellipse(sh, (int(CFG["feet"][0]), int(CFG["feet"][1] + 6)), (280, 23), 0, 0, 360, 1.0, -1)
         self.shadow = cv2.GaussianBlur(sh, (0, 0), 22 * 0.45) * 0.18
+
+    def squash(self, name, t):
+        r = self.rig[name]
+        s = kv(ANIM.get(name, {}).get("squash"), t, [100, 100]) / 100
+        return affine(r["pivot"], 0, s, r["pivot"])
 
     def local(self, name, t):
         r, A = self.rig[name], ANIM.get(name, {})
@@ -92,8 +157,9 @@ class Scene:
         if r["parent"]:
             pos = np.array(r["pivot"], float) + kv(A.get("pos"), t, [0, 0])
             scale = kv(A.get("scale"), t, [100, 100]) / 100
-            if r.get("follow"):  # position expression: parent.fromComp(arm.toComp(wrist))
-                wrist = self.world(r["follow"], t) @ np.array([*r["pivot"], 1.0])
+            if r.get("follow"):  # parent.fromComp(arm.toComp(group-transformed wrist))
+                f = r["follow"]
+                wrist = self.world(f, t) @ self.squash(f, t) @ np.array([*r["pivot"], 1.0])
                 pos = (np.linalg.inv(self.world(r["parent"], t)) @ wrist)[:2]
         else:
             pos, scale = CFG["feet"], [CFG["charScale"] / 100] * 2
@@ -112,8 +178,13 @@ class Scene:
         out[:] = self.bg
         out *= (1 - self.shadow[..., None])
         for r in RIG:
-            M = self.world(r["name"], t)
-            lay = cv2.warpAffine(self.img[r["name"]], M[:2], (W, H), flags=cv2.INTER_LINEAR, borderValue=0)
+            name = r["name"]
+            if r.get("foreshorten"):
+                spr, off = raster_part(VEC["parts"][name], self.squash(name, t))
+            else:
+                spr, off = self.sprites[name]
+            M = self.world(name, t) @ np.array([[1, 0, off[0]], [0, 1, off[1]], [0, 0, 1.0]])
+            lay = cv2.warpAffine(spr, M[:2], (W, H), flags=cv2.INTER_LINEAR, borderValue=0)
             out = out * (1 - lay[..., 3:4]) + lay[..., :3]
         return out
 
@@ -122,7 +193,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="preview.mp4")
     ap.add_argument("--sheet", default=None)
-    ap.add_argument("--mb", type=int, default=4)
+    ap.add_argument("--mb", type=int, default=10)
     ap.add_argument("--frames", default=None)
     args = ap.parse_args()
     sc = Scene()
@@ -137,7 +208,7 @@ def main():
     stills = {}
     for f in frames:
         t = f / FPS
-        acc = sum(sc.render((t + d) % DUR) for d in offs) / len(offs)   # loop: blur wraps around
+        acc = sum(sc.render((t + d) % DUR) for d in offs) / len(offs)
         img = (np.clip(acc, 0, 1) * 255 + 0.5).astype(np.uint8)
         if writer:
             writer.stdin.write(img.tobytes())
