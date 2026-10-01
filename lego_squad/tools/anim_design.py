@@ -147,7 +147,52 @@ def point():
     return A
 
 
-ANIMS = {"groove": groove(), "rage": rage(), "wave": wave(), "jump": jump(), "point": point()}
+def shrug():
+    """BRICK_BRAIDS: two slow cool nods, a big 'whatever' shrug with a head tilt, drops it, leans back"""
+    A = {
+        "HEAD": {"rot": [k(0, 0), k(0.4, -2), k(0.8, 0), k(1.2, -2), k(1.6, 0), k(1.8, 0), k(2.15, 9, HIT), k(2.95, 7),
+                         k(3.3, -2, HIT), k(3.6, 0), k(4.1, -5), k(4.8, 0), k(D, 0)],
+                 "pos": [k(0, [0, 0]), k(0.4, [0, 12]), k(0.8, [0, 0]), k(1.2, [0, 12]), k(1.6, [0, 0]), k(1.8, [0, 0]),
+                         k(2.12, [0, -12], [60, 30]), k(2.3, [0, -8], HIT), k(2.95, [0, -9]), k(3.25, [0, 4], [20, 70]),
+                         k(3.5, [0, 0]), k(4.1, [0, 10]), k(4.5, [0, 0]), k(D, [0, 0])]},
+        "ARM_L": {"rot": [k(0, 0), k(1.75, 0), k(1.9, -4, SNAP), k(2.12, 38, [60, 30]), k(2.3, 32, HIT), k(2.95, 30),
+                          k(3.2, -5, [20, 70]), k(3.4, 1.5, HIT), k(3.6, 0), k(D, 0)]},
+        "ARM_R": {"rot": [k(0, 0), k(1.78, 0), k(1.93, 4, SNAP), k(2.15, -38, [60, 30]), k(2.33, -32, HIT), k(2.95, -30),
+                          k(3.22, 5, [20, 70]), k(3.42, -1.5, HIT), k(3.62, 0), k(D, 0)]},
+        "TORSO": {"rot": [k(0, 0), k(0.8, 1), k(1.6, 0), k(2.15, -1.5, HIT), k(2.95, -1), k(3.3, 0.5), k(3.6, 0), k(4.1, -2.5),
+                          k(4.8, 0), k(D, 0)],
+                  "pos": [k(0, [0, 0]), k(3.15, [0, 0]), k(3.3, [0, 6], HIT), k(3.6, [0, 0]), k(D, [0, 0])]},
+    }
+    return A
+
+
+def disco():
+    """VARSITY_BEAR: disco pointing - one arm up on the diagonal, the other down, switching on the beat"""
+    beat = D / 8
+    up, down = 138, 8
+    A = {"ARM_L": {"rot": [k(0, 0), k(0.35, 0)]}, "ARM_R": {"rot": [k(0, 0), k(0.35, 0)]},
+         "HEAD": {"rot": [k(0, 0), k(0.35, 0)]}, "TORSO": {"rot": [k(0, 0), k(0.35, 0)]}, "LEGS": {"pos": [], "rot": []}}
+    for n, t in enumerate((beat, 3 * beat, 5 * beat)):   # poses A, B, A; each held two beats with a pump
+        a = 1 if n % 2 == 0 else -1
+        lv, rv = (up, -down) if a > 0 else (down, -up)
+        A["ARM_L"]["rot"] += [k(t, lv, [60, 25]), k(t + beat, lv - 10 * (a > 0), S), k(t + 1.6 * beat, lv, S)]
+        A["ARM_R"]["rot"] += [k(t, rv, [60, 25]), k(t + beat, rv + 10 * (a < 0), S), k(t + 1.6 * beat, rv, S)]
+        A["HEAD"]["rot"] += [k(t, -8 * a, HIT), k(t + 1.6 * beat, -6 * a)]
+        A["TORSO"]["rot"] += [k(t, -3 * a, HIT), k(t + 1.6 * beat, -2 * a)]
+    t_end = 7 * beat
+    for p, v in (("ARM_L", 0), ("ARM_R", 0), ("HEAD", 0), ("TORSO", 0)):
+        A[p]["rot"] += [k(t_end, v, [60, 40]), k(D, v)]
+    for i in range(9):   # bounce + hip sway on every beat
+        t = i * beat
+        if i == 8:
+            A["LEGS"]["pos"].append(k(t, [0, 0], HIT)); A["LEGS"]["rot"].append(k(t, 0))
+            continue
+        A["LEGS"]["pos"] += [k(t, [0, 0], HIT), k(t + beat / 2, [0, -10])]
+        A["LEGS"]["rot"].append(k(t, 0 if i in (0, 7) else (2.5 if i % 2 else -2.5)))
+    return A
+
+
+ANIMS = {"groove": groove(), "rage": rage(), "wave": wave(), "jump": jump(), "point": point(), "shrug": shrug(), "disco": disco()}
 
 
 def check(A):

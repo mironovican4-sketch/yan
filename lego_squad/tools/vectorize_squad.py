@@ -36,6 +36,12 @@ CHARS = {
                     "seamL": [[538, 750], [468, 1205]], "seamR": [[962, 750], [1032, 1205]]},
     "RED_SUIT": {"file": "14.webp", "ttop": 724, "tbot": 1168, "cuff": [1110, 1110],
                  "seamL": [[563, 745], [501, 1150]], "seamR": [[937, 745], [997, 1150]]},
+    # head_ext: braids hanging below the shoulder line outside the torso still belong to the head
+    "BRICK_BRAIDS": {"file": "20.webp", "ttop": 758, "tbot": 1250, "cuff": [1190, 1190], "head_ext": 22,
+                     "seamL": [[537, 790], [465, 1215]], "seamR": [[965, 790], [1031, 1215]]},
+    # thin line art: gentler ink cleanup; no gold chain (the muzzle shading would read as gold)
+    "VARSITY_BEAR": {"file": "21.webp", "ink_open": 1, "gold": False, "ttop": 798, "tbot": 1230, "cuff": [1171, 1171],
+                     "seamL": [[568, 810], [507, 1210]], "seamR": [[936, 810], [998, 1210]]},
 }
 
 
@@ -131,7 +137,7 @@ def vectorize(name, cfg, img_dir, debug_dir=None):
     flat = cv2.medianBlur(flat, 5).astype(np.int32)
     # true ink lines (much darker than black fabric) are kept as their own colour
     ink = cv2.medianBlur(np.where(alpha > 128, rgb.max(-1), 255).astype(np.uint8), 3) < 14
-    ink = cv2.morphologyEx(ink.astype(np.uint8), cv2.MORPH_OPEN, disk(3)).astype(bool)   # lines stay, grain dots go
+    ink = cv2.morphologyEx(ink.astype(np.uint8), cv2.MORPH_OPEN, disk(cfg.get("ink_open", 3))).astype(bool)   # lines stay, grain dots go
     fig = alpha > 128
     maxc = np.where(fig, rgb.max(-1), 255)
     ttop, tbot = cfg["ttop"], cfg["tbot"]
@@ -143,11 +149,13 @@ def vectorize(name, cfg, img_dir, debug_dir=None):
     cuffL, cuffR = cfg["cuff"]
     legL, legR = sL(tbot) - 4, sR(tbot) + 4
 
+    ext = cfg.get("head_ext", 0)
     poly = {
-        "HEAD": (yy < ttop) | ((yy < ttop + 40) & (np.abs(xx - cx) < (sR(ttop) - sL(ttop)) * 0.28)),
+        "HEAD": (yy < ttop) | ((yy < ttop + 40) & (np.abs(xx - cx) < (sR(ttop) - sL(ttop)) * 0.28)) |
+                ((yy < ttop + ext) & ((xx < xL) | (xx > xR))),
         "TORSO": (yy >= ttop) & (yy < tbot) & (xx >= xL) & (xx <= xR),
-        "ARM_L": (yy >= ttop) & (yy <= cuffL) & (xx < xL),
-        "ARM_R": (yy >= ttop) & (yy <= cuffR) & (xx > xR),
+        "ARM_L": (yy >= ttop + ext) & (yy <= cuffL) & (xx < xL),
+        "ARM_R": (yy >= ttop + ext) & (yy <= cuffR) & (xx > xR),
         "HAND_L": (yy > cuffL) & (((yy < tbot) & (xx < xL)) | ((yy >= tbot) & (xx < legL))),
         "HAND_R": (yy > cuffR) & (((yy < tbot) & (xx > xR)) | ((yy >= tbot) & (xx > legR))),
         "LEGS": (yy >= tbot) & (xx >= legL) & (xx <= legR),
@@ -212,7 +220,7 @@ def vectorize(name, cfg, img_dir, debug_dir=None):
         r_, g_, b_ = rgb[..., 0], rgb[..., 1], rgb[..., 2]
         gold = inside & (r_ > 150) & (g_ > 110) & (b_ < 120) & (r_ - b_ > 70) & (np.abs(r_ - g_) < 90)
         gold = cv2.morphologyEx(gold.astype(np.uint8), cv2.MORPH_CLOSE, disk(3)).astype(bool)
-        if gold.sum() > 300 and part in ("TORSO", "HEAD"):
+        if gold.sum() > 300 and part in ("TORSO", "HEAD") and cfg.get("gold", True):
             cols = np.vstack([cols, [np.median(rgb[gold & (rgb.max(-1) > 150)], axis=0)]])
             lab = np.where(gold, len(cols) - 1, lab)
         if cap is not None:   # cap over the seam/torso: continue the arm's own colours (nearest arm pixel)

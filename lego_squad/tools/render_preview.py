@@ -130,7 +130,7 @@ def raster_part(part, lw, outline, M=np.eye(3)):
     return np.dstack([small(col * al[..., None]), a]), off
 
 
-ORDER = ["LEGS", "HEAD", "TORSO", "ARM_R", "HAND_R", "ARM_L", "HAND_L"]
+ORDER = ["LEGS", "ARM_R", "ARM_L", "HEAD", "TORSO", "HAND_R", "HAND_L"]   # arms tuck under the torso edge
 
 
 def static_check(name, out):
