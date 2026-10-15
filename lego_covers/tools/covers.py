@@ -57,42 +57,40 @@ def sleeve_arm(vec, chars, arm, hand):
 
 
 # =============================================================================================
-# SMILE_VARSITY · держит обложку перед собой у правой стороны груди: рука согнута к камере и спрятана за обложкой,
-# кисть спереди держит обложку за нижний левый угол; пару раз слегка её потряхивает, смотрит в камеру, дышит
+# SMILE_VARSITY · держит обложку перед собой: обе руки опущены и одинаковой длины, правая чуть повёрнута внутрь
+# и держит обложку сбоку за середину правого края (кисть за обложкой); пару раз слегка её потряхивает
 # =============================================================================================
 
-def build_smile(base=36, length=48, attach=(0.06, 0.95), side=380, hand_turn=0, hand_front=True, feet_x=465):
-    """base = ARM_R rotation, length = how much of the arm length is seen (%, arm turned towards the camera),
-    attach = where the hand holds the cover (parts of its side), side = cover side in source px (~0.6 on screen)"""
+def build_smile(arm_rot=18.0, attach=(0.97, 0.6), side=380, feet_x=500, arm_on_top=True):
+    """arm_rot = inward turn of the right arm (deg), attach = where the hand's grip sits on the cover (parts of its
+    side), arm_on_top = the right arm is drawn over the torso (it crosses in front of the body)"""
     vec = SQ.load_vec("SMILE_VARSITY")
     feet, scale = [feet_x, 940], 60
+    base = arm_rot
 
-    def shake(t0, amp, n=3, period=0.16):       # a few small quick wiggles that die out
+    def shake(t0, amp, n_=3, period=0.16):      # a few small quick wiggles that die out
         ks = [K(t0, base, [40, 40])]
-        for i in range(n):
+        for i in range(n_):
             ks.append(K(t0 + period * (i + 0.5), base + amp * (1 if i % 2 == 0 else -1) * (1 - 0.25 * i), [45, 45]))
-        ks.append(K(t0 + period * (n + 0.5), base, [40, 60]))
+        ks.append(K(t0 + period * (n_ + 0.5), base, [40, 60]))
         return ks
 
     A = {
-        "ARM_R": {"rot": [K(0, base)] + shake(0.45, 3.0) + shake(1.95, 2.6) + [K(DUR, base)],
-                  "squash": [K(0, length), K(DUR, length)]},
-        "HAND_R": {"rot": [K(0, hand_turn), K(DUR, hand_turn)]},
+        "ARM_R": {"rot": [K(0, base)] + shake(0.45, 2.5) + shake(1.95, 2.2) + [K(DUR, base)]},
         "ARM_L": {"rot": [K(0, 0), K(0.75, 2), K(1.5, 0), K(2.25, 2), K(DUR, 0)]},
         "HEAD": {"rot": [K(0, 2), K(0.55, 4), K(1.2, 1), K(1.9, 4), K(2.5, 2), K(DUR, 2)],
                  "pos": [K(0, [0, 0]), K(0.6, [0, 4]), K(1.25, [0, 0]), K(2.0, [0, 4]), K(2.6, [0, 0])]},
         "TORSO": {"rot": [K(0, 0), K(0.75, -0.8), K(1.5, 0), K(2.25, -0.8), K(DUR, 0)]},
     }
     chars = SQ.character(vec, feet, scale, A, period=1.5)
-    sleeve_arm(vec, chars, "ARM_R", "HAND_R")
     by = {L["name"]: L for L in chars}
     sc = Scene(SQ.scene("tmp", [0, 0, 0], chars))
     grip = hand_grip(vec, "HAND_R")
     n = COVER["size"][0]
     k = side / n
-    # the cover faces the camera in front of him, upright, tilting a little with every wiggle; the hand holds its
-    # lower left corner from the front (the artwork stays free), the arm is behind the cover
-    rot = sampled(lambda t: round(1.6 * (value(by["ARM_R"]["rot"], t) - base) - sc.world_rot("HAND_R", t), 3), 0, DUR)
+    # the cover hangs upright in front of him and tilts a little with every wiggle
+    tilt = lambda t: 1.6 * (value(by["ARM_R"]["rot"], t) - base)
+    rot = sampled(lambda t: round(tilt(t) - sc.world_rot("HAND_R", t), 3), 0, DUR)
     cover = layer("COVER", [], parent="HAND_R", anchor=[n * attach[0], n * attach[1]], pos=grip, rot=keys(*rot),
                   scale=[k * 100, k * 100], image=dict(COVER))
     frame = layer("COVER_FRAME", [group("Outline", [rrect_path(0, 0, n, n, 6)], stroke=OUTLINE, width=9 / k)], parent="COVER")
@@ -100,10 +98,10 @@ def build_smile(base=36, length=48, attach=(0.06, 0.95), side=380, hand_turn=0, 
     layers = [SQ.background(bg),
               layer("SPOTLIGHT", [group("Light", [SQ.ellipse_path(500, 470, 430, 430)], fill=[248, 245, 255])], blur=90),
               SQ.floor_shadow(sc, feet)]
-    if hand_front:   # arm behind the cover, the hand wraps round to the front of it
-        layers += [by[nm] for nm in ("LEGS", "ARM_L", "HEAD", "TORSO", "HAND_L", "ARM_R")] + [cover, frame, by["HAND_R"]]
-    else:
+    if arm_on_top:   # the right arm crosses in front of the body; arm and hand behind the cover
         layers += [by[nm] for nm in ("LEGS", "ARM_L", "HEAD", "TORSO", "HAND_L", "ARM_R", "HAND_R")] + [cover, frame]
+    else:
+        layers += [by[nm] for nm in ("LEGS", "ARM_R", "ARM_L", "HEAD", "TORSO", "HAND_L", "HAND_R")] + [cover, frame]
     return SQ.scene("SMILE_VARSITY_COVER", bg, layers)
 
 
