@@ -83,29 +83,8 @@ def resample_closed(pts, n):
     return out
 
 
-def cover_layers(sc, grips, side, grip_at=0.72, glare=(0.95, 1.5), sparks=((0.66, 1.0), (1.55, 1.9))):
-    """the cover rides on the torso, centred between the two grips; frame, glare sweep and sparkles on top.
-    side = cover size in source px of the character, grip_at = height of the grips on the cover (0 top .. 1 bottom)"""
-    gl, gr = grips
-    n = COVER["size"][0]
-    k = side / n
-
-    def pose(t):
-        Ti = np.linalg.inv(sc.world("TORSO", t))
-        a = (Ti @ np.append(sc.to_comp("HAND_L", gl, t), 1))[:2]
-        b = (Ti @ np.append(sc.to_comp("HAND_R", gr, t), 1))[:2]
-        ang = math.atan2(b[1] - a[1], b[0] - a[0])
-        mid = (a + b) / 2
-        down = np.array([-math.sin(ang), math.cos(ang)])
-        c = mid - down * (grip_at - 0.5) * side
-        return [round(float(c[0]), 2), round(float(c[1]), 2)], round(math.degrees(ang), 3)
-
-    poses = [(t, pose(t)) for t in [f / FPS for f in range(int(DUR * FPS) + 1)]]
-    cover = layer("COVER", [], parent="TORSO", anchor=[n / 2, n / 2], scale=[k * 100, k * 100], image=dict(COVER),
-                  pos=keys(*[K(t, p[0], "L") for t, p in poses]), rot=keys(*[K(t, p[1], "L") for t, p in poses]))
-    frame = layer("COVER_FRAME", [group("Outline", [rrect_path(0, 0, n, n, 6)], stroke=OUTLINE, width=9 / k)], parent="COVER")
-    # glare: a soft diagonal band sweeping across the cover, clipped to it
-    t0, t1 = glare
+def glare_layer(n, t0, t1, opacity_from=34):
+    """a soft diagonal band sweeping across a square n x n cover between t0 and t1, clipped to it (child of COVER)"""
     band_w, slope = 0.13 * n, math.tan(math.radians(24))
     pk = []
     for t in np.arange(t0 - 1 / FPS, t1 + 1.5 / FPS, 1 / FPS):
@@ -115,14 +94,17 @@ def cover_layers(sc, grips, side, grip_at=0.72, glare=(0.95, 1.5), sparks=((0.66
         c = clip_rect(poly, 0, 0, n, n)
         pts = resample_closed(c, 8) if len(c) >= 3 else [np.array([0.0, 0.0])] * 8
         pk.append([round(float(t), 4), [poly_path([[float(p[0]), float(p[1])] for p in pts])]])
-    glare_l = layer("COVER_GLARE", [group("Glare", [], fill=[255, 255, 255], fillOpacity=34, pathKeys=pk)], parent="COVER",
-                    opacity=keys(K(0, 0, "H"), K(t0, 100, "H"), K(t1, 0, "H"), K(DUR, 0, "H")))
-    out = [cover, frame, glare_l]
-    spots = [(-0.1, -0.04, 1.0), (1.09, 0.02, 0.8), (1.13, 0.58, 1.1), (-0.13, 0.66, 0.8), (1.06, 1.05, 0.9), (-0.07, 1.06, 0.7)]
+    return layer("COVER_GLARE", [group("Glare", [], fill=[255, 255, 255], fillOpacity=opacity_from, pathKeys=pk)], parent="COVER",
+                 opacity=keys(K(0, 0, "H"), K(t0, 100, "H"), K(t1, 0, "H"), K(DUR, 0, "H")))
+
+
+def spark_layers(n, k, spots, windows):
+    """four-point stars popping around the cover (children of COVER); spots in parts of the cover side"""
+    out = []
     for j, (sx, sy, sz) in enumerate(spots):
-        a, b = sparks[j % 2]
-        a += 0.05 * (j // 2)
-        b = max(b + 0.05 * (j // 2), a + 0.45)
+        a, b = windows[j % len(windows)]
+        a += 0.05 * (j // len(windows))
+        b = max(b + 0.05 * (j // len(windows)), a + 0.45)
         c = [sx * n, sy * n]
         star = SQ.star_path(c[0], c[1], 0.07 * n * sz, 0.32)
         col = [255, 255, 255] if j % 2 == 0 else [255, 210, 70]
@@ -135,50 +117,79 @@ def cover_layers(sc, grips, side, grip_at=0.72, glare=(0.95, 1.5), sparks=((0.66
     return out
 
 
-def tube_arms(vec, chars):
-    """both arms as sleeve tubes (raised towards the camera only the spine shortens), hands turn with the sleeve"""
-    by = {L["name"]: L for L in chars}
-    frames = [round(f / FPS, 4) for f in range(int(DUR * FPS) + 1)]
-    for arm, hand in (("ARM_L", "HAND_L"), ("ARM_R", "HAND_R")):
-        tube = SQ.TubeArm(vec, arm)
-        sq = by[arm]["squash"]["s"] if by[arm].get("squash") else 100
-        s_of = (lambda v: (lambda t: value(v, t) / 100))(sq)
-        by[arm]["groups"] = tube.groups(s_of, frames)
-        by[arm]["squash"] = None
-        base_rot = by[hand]["rot"]
-        by[hand]["rot"] = keys(*sampled((lambda tb, so, br: lambda t: round(tb.tangent(so(t)) - tb.rest_end + value(br, t), 3))(tube, s_of, base_rot),
-                                        0, DUR))
+def crossing(V, level, t0, t1, rising):
+    """first frame time in [t0, t1] where the keyed value crosses level (rising: goes above it)"""
+    for f in range(int(round(t0 * FPS)), int(round(t1 * FPS)) + 1):
+        v = value(V, f / FPS)
+        if (v > level) if rising else (v < level):
+            return round(f / FPS, 4)
+    return t1
 
 
 # =============================================================================================
-# SMILE_VARSITY · показывает обложку: держит её двумя руками у пояса, подпрыгивает и поднимает к груди
-# («та-да!»), по обложке пробегает блик, вокруг вспыхивают звёздочки, опускает — по кругу
+# SMILE_VARSITY · достаёт обложку из-за спины одной рукой, поднимает сбоку («та-да» второй рукой),
+# по обложке пробегает блик, звёздочки; прячет обратно за спину — по кругу. Наряд всё время виден
 # =============================================================================================
 
 def build_smile():
     vec = SQ.load_vec("SMILE_VARSITY")
-    feet, scale = [500, 940], 62
-    lift = [K(0, 100), K(0.28, 100), K(0.56, 80, [60, 30]), K(0.74, 84, HIT), K(1.15, 82), K(1.6, 85), K(1.98, 83),
-            K(2.42, 100, [60, 40])]
+    feet, scale = [385, 940], 60
+    side = 330                                  # cover side, source px of the character (about 200 px on screen)
+    t_back, t_grab, t_rel, t_home = 0.2, 0.46, 2.6, 2.86
+    up = -106
+    arm_r = [K(0, 0), K(t_back, 0), K(0.42, 34, [55, 45]), K(0.5, 34), K(0.9, up - 6, [45, 25]), K(1.04, up + 3, HIT), K(1.2, up),
+             K(1.55, up - 4), K(1.9, up + 2), K(2.08, up), K(2.52, 34, [55, 40]), K(t_rel + 0.02, 34), K(t_home, 0, [50, 50])]
     A = {
-        "ARM_L": {"squash": lift}, "ARM_R": {"squash": lift},
-        "LEGS": {"pos": [K(0, [0, 0]), K(0.3, [0, 0]), K(0.4, [0, 6], [60, 40]), K(0.58, [0, -34], [55, 30]), K(0.78, [0, 0], [30, 85]),
-                         K(0.88, [0, 5], HIT), K(1.02, [0, 0]), K(2.42, [0, 0]), K(2.52, [0, 4], HIT), K(2.66, [0, 0])]},
-        "HEAD": {"rot": [K(0, 0), K(0.3, 0), K(0.6, -6, HIT), K(0.95, 4), K(1.3, -3), K(1.65, 4), K(2.0, -2), K(2.45, 0)],
-                 "pos": [K(0, [0, 0]), K(0.3, [0, 0]), K(0.42, [0, 8]), K(0.62, [0, -10], [60, 30]), K(0.85, [0, 0], HIT),
-                         K(1.3, [0, 4]), K(1.75, [0, 0]), K(2.45, [0, 0])]},
-        "TORSO": {"rot": [K(0, 0), K(0.6, 0), K(0.95, 1.5), K(1.45, -1.5), K(1.95, 1), K(2.45, 0)]},
+        "ARM_R": {"rot": arm_r},
+        "ARM_L": {"rot": [K(0, 0), K(0.95, 0), K(1.12, 26, [55, 30]), K(1.25, 22, HIT), K(1.9, 23), K(2.15, 0, [50, 50])]},
+        "HEAD": {"rot": [K(0, 0), K(0.3, -4), K(0.55, -2), K(0.95, 4), K(1.15, 7, HIT), K(1.6, 5), K(2.0, 7), K(2.4, 0)],
+                 "pos": [K(0, [0, 0]), K(0.95, [0, 0]), K(1.08, [0, -8], [60, 30]), K(1.22, [0, 0], HIT), K(1.6, [0, 5]), K(2.0, [0, 0])]},
+        "TORSO": {"rot": [K(0, 0), K(0.3, 2), K(0.5, 3), K(0.95, -2), K(1.2, -1.5), K(2.1, -1), K(2.5, 2.5), K(2.86, 0)]},
+        "LEGS": {"pos": [K(0, [0, 0]), K(0.92, [0, 0]), K(1.04, [0, -16], [55, 30]), K(1.18, [0, 0], [30, 80]), K(1.26, [0, 3], HIT),
+                         K(1.36, [0, 0])]},
     }
     chars = SQ.character(vec, feet, scale, A, period=1.5)
-    tube_arms(vec, chars)
+    by = {L["name"]: L for L in chars}
+    arm_rot = by["ARM_R"]["rot"]
+    # кисть за спиной — копия под туловищем; меняются местами, когда кисть сбоку от тела и ни на что не заходит
+    t_out = crossing(arm_rot, -8, 0.5, 1.0, rising=False)
+    t_in = crossing(arm_rot, -8, 2.08, 2.6, rising=True)
+    back = dict(by["HAND_R"], name="HAND_R_BACK", opacity=keys(K(0, 0, "H"), K(t_back, 100, "H"), K(t_out, 0, "H"), K(t_in, 100, "H"),
+                                                               K(t_home, 0, "H"), K(DUR, 0, "H")))
+    by["HAND_R"]["opacity"] = keys(K(0, 100, "H"), K(t_back, 0, "H"), K(t_out, 100, "H"), K(t_in, 0, "H"), K(t_home, 100, "H"),
+                                   K(DUR, 100, "H"))
     sc = Scene(SQ.scene("tmp", [0, 0, 0], chars))
-    grips = (hand_grip(vec, "HAND_L"), hand_grip(vec, "HAND_R"))
+    grip = hand_grip(vec, "HAND_R")
+    n = COVER["size"][0]
+    k = side / n
+
+    # the cover stays upright in the world (leans back while it is swung up, settles), held by the middle of its bottom edge
+    def world_angle(t):
+        if t < 0.5 or t > 2.56:
+            return 0.0
+        if t < 1.3:
+            u = (t - 0.5) / 0.8
+            return -16 * math.sin(math.pi * min(u, 1) * 1.25) * (1 - u) if u < 1 else 0.0
+        if t < 2.08:
+            return 2.5 * math.sin(2 * math.pi * (t - 1.3) / 0.78)
+        u = (t - 2.08) / 0.48
+        return 12 * math.sin(math.pi * u)
+
+    rot = sampled(lambda t: round(world_angle(t) - sc.world_rot("HAND_R", t), 3), 0, DUR)
+    vis = keys(K(0, 0, "H"), K(t_grab, 100, "H"), K(t_rel, 0, "H"), K(DUR, 0, "H"))
+    cover = layer("COVER", [], parent="HAND_R", anchor=[n / 2, n], pos=grip, rot=keys(*rot), scale=[k * 100, k * 100],
+                  image=dict(COVER), opacity=vis)
+    frame = layer("COVER_FRAME", [group("Outline", [rrect_path(0, 0, n, n, 6)], stroke=OUTLINE, width=9 / k)], parent="COVER", opacity=vis)
+    sparks = spark_layers(n, k, [(-0.12, -0.06, 1.0), (1.12, 0.05, 0.85), (1.14, 0.7, 1.1), (0.5, -0.16, 0.8), (-0.14, 0.62, 0.75)],
+                          [(1.02, 1.5), (1.55, 2.0)])
     bg = [236, 231, 246]
     layers = [SQ.background(bg),
-              layer("SPOTLIGHT", [group("Light", [SQ.ellipse_path(feet[0], 520, 380, 430)], fill=[248, 245, 255])], blur=90)]
-    layers.append(SQ.floor_shadow(sc, feet))
-    layers += chars
-    layers = SQ.insert_after(layers, "TORSO", cover_layers(sc, grips, side=700, grip_at=0.5))
+              layer("SPOTLIGHT", [group("Light", [SQ.ellipse_path(500, 470, 430, 430)], fill=[248, 245, 255])], blur=90),
+              SQ.floor_shadow(sc, feet),
+              cover, frame, glare_layer(n, 1.2, 1.7),
+              by["ARM_R"], back]
+    layers += [by[nm] for nm in ("LEGS", "ARM_L", "HEAD", "TORSO", "HAND_R", "HAND_L")]
+    layers += sparks
     return SQ.scene("SMILE_VARSITY_COVER", bg, layers)
 
 
