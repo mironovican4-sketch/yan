@@ -30,7 +30,8 @@ CHARS = {
                    "seamL": [[551, 760], [475, 1175]], "seamR": [[1003, 760], [1079, 1175]]},
     "ANGRY_CHAIN": {"file": "11.webp", "degrain": True, "ttop": 752, "tbot": 1212, "cuff": [1150, 1150],
                     "seamL": [[540, 770], [482, 1184]], "seamR": [[958, 770], [1016, 1184]]},
-    "SMILE_VARSITY": {"file": "12.webp", "ttop": 736, "tbot": 1150, "cuff": [1090, 1090],
+    # no gold-chain rescue (it took the darker skin and the yellow bead); fill grain pinholes inside colour areas
+    "SMILE_VARSITY": {"file": "12.webp", "gold": False, "fill_print_holes": 220, "ttop": 736, "tbot": 1150, "cuff": [1090, 1090],
                       "seamL": [[556, 755], [497, 1130]], "seamR": [[938, 755], [997, 1130]]},
     "ASTRO_BRICK": {"file": "13.webp", "ttop": 730, "tbot": 1225, "cuff": [1165, 1165],
                     "seamL": [[538, 750], [468, 1205]], "seamR": [[962, 750], [1032, 1205]]},
@@ -255,6 +256,8 @@ def vectorize(name, cfg, img_dir, debug_dir=None, hook=None):
             if cols[i].max() < 60 and not synth.get(part, {}).get("keep_edge"):   # black: the outline band is the stroke
                 m &= ~edge_band
             m = cv2.morphologyEx(m.astype(np.uint8), cv2.MORPH_OPEN, np.ones((2, 2), np.uint8)).astype(bool)
+            if cfg.get("fill_print_holes"):   # pinholes of the printed grain would show the base colour through
+                m = fill_holes(m, cfg["fill_print_holes"])
             if m.sum() < 30:
                 continue
             paths = trace(m, turdsize=60 if cols[i].max() < 60 else 14, alphamax=1.0)
