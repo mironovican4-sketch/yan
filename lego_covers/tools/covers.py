@@ -50,8 +50,8 @@ def hand_grip(vec, hand):
 def build_smile():
     vec = SQ.load_vec("SMILE_VARSITY")
     feet, scale = [400, 940], 60
-    side = 330                                  # cover side, source px of the character (about 200 px on screen)
-    base = -60                                  # arm lifted a little to the side, cover at chest height
+    side = 400                                  # cover side, source px of the character (about 240 px on screen)
+    base = -52                                  # arm lifted a little to the side, cover at chest height
 
     def shake(t0, amp, n=3, period=0.16):       # a few small quick wiggles that die out
         ks = [K(t0, base, [40, 40])]
@@ -73,9 +73,10 @@ def build_smile():
     grip = hand_grip(vec, "HAND_R")
     n = COVER["size"][0]
     k = side / n
-    # the cover stands upright and tilts a little with every wiggle; the hand holds its bottom edge near the left corner
+    # the cover stands upright and tilts a little with every wiggle; the hand holds it in front at the lower left (the
+    # empty part of the artwork), the forearm goes behind the cover
     rot = sampled(lambda t: round(1.6 * (value(by["ARM_R"]["rot"], t) - base) - sc.world_rot("HAND_R", t), 3), 0, DUR)
-    cover = layer("COVER", [], parent="HAND_R", anchor=[n * 0.3, n], pos=grip, rot=keys(*rot), scale=[k * 100, k * 100], image=dict(COVER))
+    cover = layer("COVER", [], parent="HAND_R", anchor=[n * 0.2, n * 0.76], pos=grip, rot=keys(*rot), scale=[k * 100, k * 100], image=dict(COVER))
     frame = layer("COVER_FRAME", [group("Outline", [rrect_path(0, 0, n, n, 6)], stroke=OUTLINE, width=9 / k)], parent="COVER")
     bg = [236, 231, 246]
     layers = [SQ.background(bg),
