@@ -6,7 +6,8 @@ render.py draws the same data with the same maths, so the preview matches the co
 scene = {name, width, height, fps, duration, bg:[r,g,b], layers:[...bottom -> top]}
 layer = {name, parent|None, anchor:[x,y], pos:V, rot:V, scale:V([x,y] %), opacity:V,
          groups:[...top -> bottom], blur: float|None, bend: {root:[x,y], len:L, deg:V}|None,
-         squash: {py: y, s: V}|None}      bend / squash deform the paths (AE: slider + path expression)
+         squash: {py: y, s: V}|None,      bend / squash deform the paths (AE: slider + path expression)
+         image: {file: "assets/x.png", size: [w, h]}|None}   footage layer instead of shapes (layer space = pixels)
 group = {name, paths:[P], fill:[r,g,b]|None, fillOpacity, stroke:{color,width,opacity}|None,
          trim:{start:V, end:V}|None, pathKeys:[[t, [P...]], ...]|None, opacity:V}
 P     = {v:[[x,y]..], i:[..], o:[..], c: closed}
@@ -15,6 +16,7 @@ V     = a static value or {"k": [[t, value, ease], ...]}, ease = [in, out] influ
 """
 import json
 import math
+import os
 
 import cv2
 import numpy as np
@@ -235,10 +237,11 @@ BEND_EXPR = "\n".join([
 # ------------------------------------------------------------------ layers
 
 
-def layer(name, groups, parent=None, anchor=(0, 0), pos=(0, 0), rot=0, scale=(100, 100), opacity=100, blur=None, bend=None, squash=None):
+def layer(name, groups, parent=None, anchor=(0, 0), pos=(0, 0), rot=0, scale=(100, 100), opacity=100, blur=None, bend=None, squash=None,
+          image=None):
     return {"name": name, "parent": parent, "anchor": list(anchor), "pos": pos if isinstance(pos, dict) else list(pos),
             "rot": rot, "scale": scale if isinstance(scale, dict) else list(scale), "opacity": opacity,
-            "groups": groups, "blur": blur, "bend": bend, "squash": squash}
+            "groups": groups, "blur": blur, "bend": bend, "squash": squash, "image": image}
 
 
 def group(name, paths, fill=None, stroke=None, width=9, fillOpacity=100, strokeOpacity=100, trim=None, pathKeys=None, opacity=100):
@@ -396,10 +399,29 @@ def is_static(L):
 
 
 class Renderer:
-    def __init__(self, data):
+    def __init__(self, data, base_dir="."):
         self.sc = Scene(data)
         self.d = data
+        self.base = base_dir
         self.cache = {}
+        self.images = {}
+
+    def image_sprite(self, L, M):
+        """premultiplied image, pre-shrunk (area filter) to about its on-screen size so the warp stays clean"""
+        f = L["image"]["file"]
+        if f not in self.images:
+            from PIL import Image
+            a = np.asarray(Image.open(os.path.join(self.base, f)).convert("RGBA")).astype(np.float32) / 255
+            a[..., :3] *= a[..., 3:4]
+            self.images[f] = {1.0: a}
+        k = min(1.0, round(math.sqrt(abs(np.linalg.det(M[:2, :2]))) * 1.15, 2))
+        if k not in self.images[f]:
+            src = self.images[f][1.0]
+            h, w = src.shape[:2]
+            self.images[f][k] = cv2.resize(src, (max(1, int(w * k)), max(1, int(h * k))), interpolation=cv2.INTER_AREA)
+        img = self.images[f][k]
+        sx = self.images[f][1.0].shape[1] / img.shape[1]
+        return img, np.array([[sx, 0, 0], [0, sx, 0], [0, 0, 1.0]])
 
     def frame(self, t):
         W, H = self.d["width"], self.d["height"]
@@ -407,7 +429,13 @@ class Renderer:
         out[:] = np.array(self.d["bg"], np.float32) / 255
         for L in self.d["layers"]:
             op = value(L["opacity"], t) / 100
-            if op <= 0.002 or not L["groups"]:
+            if op <= 0.002 or not (L["groups"] or L.get("image")):
+                continue
+            if L.get("image"):
+                M = self.sc.world(L["name"], t)
+                img, S = self.image_sprite(L, M)
+                lay = cv2.warpAffine(img, (M @ S)[:2], (W, H), flags=cv2.INTER_LINEAR, borderValue=0) * op
+                out = out * (1 - lay[..., 3:4]) + lay[..., :3]
                 continue
             if is_static(L):
                 if L["name"] not in self.cache:

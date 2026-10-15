@@ -14,6 +14,7 @@
 (function legoScenesBuilder() {
 
     var ONLY = "";   // например "RED_SUIT_MIC"
+    var PROJECT = "LEGO_SCENES";
     var SCENES = ["RED_DREADS_SPRAY", "ASTRO_BRICK_HEADBANG", "RED_SUIT_MIC", "BRICK_BRAIDS_ANNOYED", "VARSITY_BEAR_FLY"];
 
     // =====================================================================
@@ -91,6 +92,18 @@
         if (!f.exists) return null;
         return $.evalFile(f);
     }
+    // картинки (например, обложка) импортируются один раз и лежат в папке проекта рядом с композициями
+    var FOOTAGE = {}, FOLDER = null;
+    function footage(file) {
+        if (FOOTAGE[file]) return FOOTAGE[file];
+        var here = new File($.fileName).parent;
+        var f = new File(here.fsName + "/" + file);
+        if (!f.exists) throw new Error("Missing image " + file + " (it must lie next to the script)");
+        var it = app.project.importFile(new ImportOptions(f));
+        if (FOLDER) it.parentFolder = FOLDER;
+        FOOTAGE[file] = it;
+        return it;
+    }
     function squashExpr(q) {
         return [
             "var s = effect(\"Squash\")(1) / 100, py = " + q.py + ";",
@@ -163,7 +176,7 @@
     }
 
     function buildLayer(comp, L) {
-        var l = comp.layers.addShape();
+        var l = L.image ? comp.layers.add(footage(L.image.file)) : comp.layers.addShape();
         l.name = L.name;
         l.label = L.parent ? 13 : 9;
         if (L.blur) l.property("ADBE Effect Parade").addProperty("ADBE Gaussian Blur 2").property(1).setValue(L.blur);
@@ -177,7 +190,7 @@
             q.name = "Squash";
             setV(l.property("ADBE Effect Parade").property("Squash").property(1), L.squash.s);
         }
-        for (var i = 0; i < L.groups.length; i++) addGroup(l, L.groups[i], L.bend, L.squash);
+        for (var i = 0; !L.image && i < L.groups.length; i++) addGroup(l, L.groups[i], L.bend, L.squash);
         return l;
     }
 
@@ -207,7 +220,8 @@
     function run() {
         app.beginUndoGroup("Build LEGO scenes");
         try {
-            var folder = app.project.items.addFolder(uniqueItemName("LEGO_SCENES"));
+            var folder = app.project.items.addFolder(uniqueItemName(PROJECT));
+            FOLDER = folder;
             var built = [], missing = [], last = null;
             for (var i = 0; i < SCENES.length; i++) {
                 if (ONLY && SCENES[i] !== ONLY) continue;

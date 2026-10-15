@@ -19,7 +19,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def render(path, out_dir, frames=None):
     data = load(path)
-    R = Renderer(data)
+    R = Renderer(data, os.path.dirname(os.path.dirname(os.path.abspath(path))))   # images are relative to the project root
     fps, W, H = data["fps"], data["width"], data["height"]
     total = int(round(fps * data["duration"]))
     name = data["name"].lower()
@@ -54,9 +54,12 @@ if __name__ == "__main__":
     ap.add_argument("name")
     ap.add_argument("--out-dir", default=os.path.join(ROOT, "preview"))
     ap.add_argument("--frames", default=None)
+    ap.add_argument("--root", default=ROOT, help="project folder with scenes/ (default: lego_scenes)")
     a = ap.parse_args()
+    if a.out_dir == os.path.join(ROOT, "preview"):
+        a.out_dir = os.path.join(a.root, "preview")
     os.makedirs(a.out_dir, exist_ok=True)
-    paths = sorted(glob.glob(os.path.join(ROOT, "scenes", "*.jsxinc")))
+    paths = sorted(glob.glob(os.path.join(a.root, "scenes", "*.jsxinc")))
     for p in paths:
         n = os.path.basename(p)[:-7]
         if a.name in ("all", n):
